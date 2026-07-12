@@ -84,9 +84,7 @@
                             <tr>
                                 <th>Código</th>
                                 <th>Nombre</th>
-                                <th class="text-end">Precio KG</th>
                                 <th class="text-end">Precio UND</th>
-                                <th class="text-end">Precio LB</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>
@@ -95,9 +93,7 @@
                                 <tr>
                                     <td><%= producto.codigo %></td>
                                     <td><%= producto.nombre %></td>
-                                    <td class="text-end">$<%= (Number(producto.precio_kg) || 0).toFixed(2) %></td>
                                     <td class="text-end">$<%= (Number(producto.precio_unidad) || 0).toFixed(2) %></td>
-                                    <td class="text-end">$<%= (Number(producto.precio_libra) || 0).toFixed(2) %></td>
                                     <td class="text-center">
                                         <div class="action-buttons">
                                             <!-- Gestión de productos hijos (Padre -> Hijos) -->
@@ -154,24 +150,19 @@
                             <input type="text" class="form-control" id="nombre" required>
                         </div>
                         <div class="row">
-                            <div class="col-md-4">
+                            <div class="col-md-6 d-none">
                                 <div class="mb-3">
                                     <label class="form-label">Precio KG</label>
-                                    <input type="number" class="form-control" id="precioKg" step="0.01" min="0" required>
+                                    <input type="number" class="form-control" id="precioKg" step="0.01" min="0" value="0">
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-12">
                                 <div class="mb-3">
-                                    <label class="form-label">Precio UND</label>
+                                    <label class="form-label">Precio por unidad</label>
                                     <input type="number" class="form-control" id="precioUnidad" step="0.01" min="0" required>
                                 </div>
                             </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Precio LB</label>
-                                    <input type="number" class="form-control" id="precioLibra" step="0.01" min="0" required>
-                                </div>
-                            </div>
+                            <input type="hidden" id="precioLibra" value="0">
                         </div>
                     </form>
                 </div>
