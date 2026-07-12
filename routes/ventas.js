@@ -427,8 +427,6 @@ router.get('/export', async (req, res) => {
         const metodosResumen = [
             ['Efectivo',       totales.efectivo,       transaccionesPorMetodo.efectivo],
             ['Transferencia',  totales.transferencia,  transaccionesPorMetodo.transferencia],
-            ['Tarjeta',        totales.tarjeta,        transaccionesPorMetodo.tarjeta],
-            ['QR',             totales.qr,             transaccionesPorMetodo.qr],
         ];
         metodosResumen.forEach(([nombre, monto, txCount], idx) => {
             const pct = totalGeneral > 0 ? Number(monto || 0) / totalGeneral : 0;
@@ -568,8 +566,6 @@ router.get('/export', async (req, res) => {
         const metodosDetalle = [
             { nombre: 'Efectivo',      monto: totales.efectivo,      tx: transaccionesPorMetodo.efectivo,      color: 'FF43A047' },
             { nombre: 'Transferencia', monto: totales.transferencia,  tx: transaccionesPorMetodo.transferencia,  color: 'FF1E88E5' },
-            { nombre: 'Tarjeta',       monto: totales.tarjeta,        tx: transaccionesPorMetodo.tarjeta,        color: 'FFFF6F00' },
-            { nombre: 'QR',            monto: totales.qr,             tx: transaccionesPorMetodo.qr,             color: 'FF8E24AA' },
         ];
         const sumMetodos = metodosDetalle.reduce((a, m) => a + Number(m.monto || 0), 0) || 1;
 
