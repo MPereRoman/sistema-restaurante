@@ -23,6 +23,11 @@ const pool = mysql.createPool({
  */
 async function ensureSchema() {
     try {
+        // Datos operativos de Bistro Ciento44. Las columnas se agregan de forma
+        // compatible para instalaciones existentes, sin tocar el historial.
+        await pool.query(`ALTER TABLE mesas ADD COLUMN IF NOT EXISTS activa TINYINT(1) NOT NULL DEFAULT 1 AFTER estado`);
+        await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS numero_personas INT NOT NULL DEFAULT 1 AFTER mesero_nombre`);
+
         // Tabla de pagos por factura (pago mixto) — con soporte para QR
         await pool.query(`
             CREATE TABLE IF NOT EXISTS factura_pagos (
