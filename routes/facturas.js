@@ -31,7 +31,7 @@ function normalizarPagos(pagos) {
             monto: Number(p.monto || 0),
             referencia: (p.referencia != null && String(p.referencia).trim() !== '') ? String(p.referencia).trim() : null
         }))
-        .filter(p => ['efectivo', 'transferencia', 'tarjeta', 'qr'].includes(p.metodo) && Number.isFinite(p.monto) && p.monto > 0);
+        .filter(p => ['efectivo', 'transferencia'].includes(p.metodo) && Number.isFinite(p.monto) && p.monto > 0);
 }
 
 function sumatoriaPagos(pagos) {
@@ -178,7 +178,7 @@ router.post('/', async (req, res) => {
     } else {
         // Compatibilidad con flujo anterior (un solo medio)
         const fp = String(forma_pago || 'efectivo').toLowerCase();
-        formaPagoDB = ['efectivo', 'transferencia', 'tarjeta', 'qr', 'mixto'].includes(fp) ? fp : 'efectivo';
+        formaPagoDB = ['efectivo', 'transferencia', 'mixto'].includes(fp) ? fp : 'efectivo';
     }
 
     try {
