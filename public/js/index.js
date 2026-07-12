@@ -92,7 +92,7 @@ $(document).ready(function() {
                     <div>
                         <strong>${item.codigo}</strong> - ${item.nombre}
                         <div class="small text-muted">
-                            KG: $${item.precio_kg} | UND: $${item.precio_unidad} | LB: $${item.precio_libra}
+                            Precio: $${item.precio_unidad} por unidad
                         </div>
                     </div>
                 `);
@@ -348,7 +348,7 @@ $(document).ready(function() {
                 $(`<a class="dropdown-item">
                     <strong>${producto.codigo}</strong> - ${producto.nombre}
                     <div class="small text-muted">
-                        KG: $${producto.precio_kg} | UND: $${producto.precio_unidad} | LB: $${producto.precio_libra}
+                        Precio: $${producto.precio_unidad} por unidad
                     </div>
                 </a>`)
                 .on('click', function() {
