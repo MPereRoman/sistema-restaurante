@@ -2,7 +2,10 @@ name: restaurante
 
 services:
   db:
-    image: mariadb:11.4
+    build:
+      context: .
+      dockerfile: Dockerfile.db
+    image: restaurante-db:local
     restart: unless-stopped
     environment:
       TZ: ${TZ:-America/Mexico_City}
@@ -12,7 +15,6 @@ services:
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD en Portainer}
     volumes:
       - restaurante_db:/var/lib/mysql
-      - ./database.sql:/docker-entrypoint-initdb.d/01-database.sql:ro
     networks:
       - backend
     security_opt:
@@ -50,15 +52,16 @@ services:
       - no-new-privileges:true
 
   nginx:
-    image: nginx:1.28-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    image: restaurante-nginx:local
     restart: unless-stopped
     depends_on:
       app:
         condition: service_started
     ports:
       - "${PUBLIC_PORT:-8080}:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - frontend
     healthcheck:
