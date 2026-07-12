@@ -501,9 +501,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const productoData = {
             codigo: document.getElementById('codigo').value,
             nombre: document.getElementById('nombre').value,
+            // KG se conserva oculto para una futura reactivación.
             precio_kg: parseFloat(document.getElementById('precioKg').value) || 0,
             precio_unidad: parseFloat(document.getElementById('precioUnidad').value) || 0,
-            precio_libra: parseFloat(document.getElementById('precioLibra').value) || 0
+            precio_libra: 0
         };
 
         const productoId = document.getElementById('productoId').value;
@@ -574,7 +575,7 @@ function editarProducto(id) {
             document.getElementById('nombre').value = producto.nombre;
             document.getElementById('precioKg').value = producto.precio_kg;
             document.getElementById('precioUnidad').value = producto.precio_unidad;
-            document.getElementById('precioLibra').value = producto.precio_libra;
+            document.getElementById('precioLibra').value = 0;
             
             document.getElementById('modalTitle').textContent = 'Editar Producto';
             const modal = new bootstrap.Modal(document.getElementById('nuevoProductoModal'));
