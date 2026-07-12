@@ -311,9 +311,7 @@ router.get('/plantilla', async (req, res) => {
         table.columns = [
             { header: 'codigo', key: 'codigo', width: 18 },
             { header: 'nombre', key: 'nombre', width: 32 },
-            { header: 'precio_kg', key: 'precio_kg', width: 14 },
-            { header: 'precio_unidad', key: 'precio_unidad', width: 14 },
-            { header: 'precio_libra', key: 'precio_libra', width: 14 }
+            { header: 'precio_unidad', key: 'precio_unidad', width: 16 }
         ];
         const headerRow = table.getRow(1);
         headerRow.font = { bold: true };
@@ -322,14 +320,14 @@ router.get('/plantilla', async (req, res) => {
         table.views = [{ state: 'frozen', ySplit: 1 }];
 
         // Ejemplos
-        table.addRow({ codigo: 'P001', nombre: 'Manzana Roja', precio_kg: 8500, precio_unidad: 1500, precio_libra: 4200 });
-        table.addRow({ codigo: 'P002', nombre: 'CocaCola 400ml', precio_kg: 0, precio_unidad: 2500, precio_libra: 0 });
-        table.addRow({ codigo: 'P003', nombre: 'Queso Campesino', precio_kg: 18000, precio_unidad: 0, precio_libra: 9000 });
+        table.addRow({ codigo: 'P001', nombre: 'Café americano', precio_unidad: 55 });
+        table.addRow({ codigo: 'P002', nombre: 'Croissant', precio_unidad: 48 });
+        table.addRow({ codigo: 'P003', nombre: 'Té helado', precio_unidad: 45 });
 
         // Validaciones (toda la columna a partir de fila 2)
         table.dataValidations.add('A2:A1048576', { type: 'textLength', operator: 'greaterThan', formulae: [0], allowBlank: false, showErrorMessage: true, errorTitle: 'Código requerido', error: 'Ingrese un código' });
         table.dataValidations.add('B2:B1048576', { type: 'textLength', operator: 'greaterThan', formulae: [0], allowBlank: false, showErrorMessage: true, errorTitle: 'Nombre requerido', error: 'Ingrese el nombre' });
-        ['C','D','E'].forEach(col => {
+        ['C'].forEach(col => {
             table.dataValidations.add(`${col}2:${col}1048576`, { type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], allowBlank: true, showErrorMessage: true, errorTitle: 'Precio inválido', error: 'Debe ser número ≥ 0 (use punto decimal)' });
         });
 
@@ -352,7 +350,7 @@ router.post('/importar', upload.single('archivo'), async (req, res) => {
         const ws = wb.getWorksheet('Productos') || wb.worksheets[0];
         if (!ws) return res.status(400).json({ error: 'Hoja Productos no encontrada' });
 
-        const header = ['codigo','nombre','precio_kg','precio_unidad','precio_libra'];
+        const header = ['codigo','nombre','precio_unidad'];
         const colIdx = header.map((h,i)=> i+1);
         const rows = [];
         ws.eachRow((row, idx) => {
@@ -362,9 +360,7 @@ router.post('/importar', upload.single('archivo'), async (req, res) => {
             rows.push({
                 codigo: String(r.codigo).trim(),
                 nombre: String(r.nombre).trim(),
-                precio_kg: Number(r.precio_kg||0),
-                precio_unidad: Number(r.precio_unidad||0),
-                precio_libra: Number(r.precio_libra||0)
+                precio_unidad: Number(r.precio_unidad||0)
             });
         });
 
@@ -375,8 +371,8 @@ router.post('/importar', upload.single('archivo'), async (req, res) => {
             await connection.beginTransaction();
             for (const p of rows) {
                 await connection.query(
-                    'INSERT INTO productos (codigo, nombre, precio_kg, precio_unidad, precio_libra) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), precio_kg=VALUES(precio_kg), precio_unidad=VALUES(precio_unidad), precio_libra=VALUES(precio_libra)',
-                    [p.codigo, p.nombre, p.precio_kg, p.precio_unidad, p.precio_libra]
+                    'INSERT INTO productos (codigo, nombre, precio_kg, precio_unidad, precio_libra) VALUES (?,?,0,?,0) ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), precio_unidad=VALUES(precio_unidad)',
+                    [p.codigo, p.nombre, p.precio_unidad]
                 );
             }
             await connection.commit();
