@@ -179,16 +179,6 @@
                                 <td></td>
                             </tr>
                             <tr>
-                                <td colspan="3" class="text-end">Total Tarjeta:</td>
-                                <td colspan="2" class="text-end" id="totalTarjeta">$0.00</td>
-                                <td></td>
-                            </tr>
-                            <tr>
-                                <td colspan="3" class="text-end">Total QR:</td>
-                                <td colspan="2" class="text-end" id="totalQR">$0.00</td>
-                                <td></td>
-                            </tr>
-                            <tr>
                                 <td colspan="3" class="text-end">Total General:</td>
                                 <td colspan="2" class="text-end" id="totalGeneral">$0.00</td>
                                 <td></td>
@@ -494,8 +484,6 @@
 
             document.getElementById('totalEfectivo').textContent = `$${tef.toFixed(2)}`;
             document.getElementById('totalTransferencia').textContent = `$${ttr.toFixed(2)}`;
-            document.getElementById('totalTarjeta').textContent = `$${tta.toFixed(2)}`;
-            document.getElementById('totalQR').textContent = `$${tqr.toFixed(2)}`;
             document.getElementById('totalGeneral').textContent = `$${tge.toFixed(2)}`;
         }
 
@@ -571,8 +559,6 @@
                 const metodoColors = [];
                 if (ef > 0) { metodoLabels.push('Efectivo');      metodoData.push(ef); metodoColors.push('#198754'); }
                 if (tr > 0) { metodoLabels.push('Transferencia'); metodoData.push(tr); metodoColors.push('#0d6efd'); }
-                if (ta > 0) { metodoLabels.push('Tarjeta');       metodoData.push(ta); metodoColors.push('#fd7e14'); }
-                if (qr > 0) { metodoLabels.push('QR');            metodoData.push(qr); metodoColors.push('#8e24aa'); }
                 new Chart(document.getElementById('chartMetodoPago'), {
                     type: 'doughnut',
                     data: {
