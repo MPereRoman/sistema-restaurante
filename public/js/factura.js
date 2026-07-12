@@ -115,7 +115,7 @@ $(document).ready(function() {
                     .html(`
                         <div><strong>${producto.codigo}</strong> - ${producto.nombre}</div>
                         <div class="small text-muted">
-                            KG: $${producto.precio_kg} | UND: $${producto.precio_unidad} | LB: $${producto.precio_libra}
+                            Precio: $${producto.precio_unidad} por unidad
                         </div>
                     `)
                     .click(function(e) {
@@ -241,8 +241,6 @@ $(document).ready(function() {
                                 <select class="form-select form-select-sm pm-metodo">
                                     <option value="efectivo">Efectivo</option>
                                     <option value="transferencia">Transferencia</option>
-                                    <option value="tarjeta">Tarjeta</option>
-                                    <option value="qr">QR</option>
                                 </select>
                             </div>
                             <div class="col-4">
