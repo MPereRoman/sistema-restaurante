@@ -89,6 +89,7 @@ function buildComandaTexto({ pedido, items, negocio }) {
     lines.push(String(negocio || 'COMANDA'));
     lines.push(line);
     lines.push(`Mesa: ${pedido?.mesa_numero ?? '-'}`);
+    lines.push(`Personas: ${Math.max(1, Number(pedido?.numero_personas || 1))}`);
     lines.push(`Mesero: ${pedido?.mesero_nombre || 'Sin asignar'}`);
     lines.push(`Fecha: ${new Date().toLocaleString('es-CO')}`);
     lines.push(`Pedido: #${pedido?.id ?? '-'}`);
@@ -226,6 +227,7 @@ router.get('/', async (req, res) => {
                 ELSE 'libre'
             END AS estado
             FROM mesas m
+            WHERE m.activa = 1
             ORDER BY m.numero
         `);
 
@@ -274,6 +276,7 @@ router.get('/listar', async (req, res) => {
                 ELSE 'libre'
             END AS estado
             FROM mesas m
+            WHERE m.activa = 1
             ORDER BY m.numero
         `);
         res.json(mesas);
@@ -303,6 +306,17 @@ router.post('/crear', async (req, res) => {
     try {
         const { numero, descripcion } = req.body || {};
         if (!numero) return res.status(400).json({ error: 'El número de mesa es requerido' });
+        const [existentes] = await db.query('SELECT id, activa FROM mesas WHERE numero = ? LIMIT 1', [String(numero)]);
+        if (existentes.length > 0) {
+            if (Number(existentes[0].activa) === 0) {
+                await db.query(
+                    `UPDATE mesas SET descripcion = ?, estado = 'libre', activa = 1 WHERE id = ?`,
+                    [descripcion || null, existentes[0].id]
+                );
+                return res.status(201).json({ id: existentes[0].id, restaurada: true });
+            }
+            return res.status(409).json({ error: 'Ya existe una mesa con ese número' });
+        }
         const [result] = await db.query(
             'INSERT INTO mesas (numero, descripcion, estado) VALUES (?, ?, ?)',
             [String(numero), descripcion || null, 'libre']
@@ -349,25 +363,58 @@ router.put('/:mesaId', async (req, res) => {
     }
 });
 
-// DELETE /mesas/:mesaId - API: eliminar mesa (solo si no tiene pedidos asociados)
+// DELETE /mesas/:mesaId - oculta una mesa libre preservando pedidos históricos.
 router.delete('/:mesaId', async (req, res) => {
+    let connection = null;
     try {
+        connection = await db.getConnection();
         const mesaId = req.params.mesaId;
-
-        const [existe] = await db.query('SELECT id FROM mesas WHERE id = ?', [mesaId]);
-        if (existe.length === 0) return res.status(404).json({ error: 'Mesa no encontrada' });
-
-        const [pedidos] = await db.query('SELECT COUNT(*) AS cnt FROM pedidos WHERE mesa_id = ?', [mesaId]);
-        const cnt = Number(pedidos?.[0]?.cnt || 0);
-        if (cnt > 0) {
-            return res.status(400).json({ error: 'No se puede eliminar: la mesa tiene pedidos asociados' });
+        await connection.beginTransaction();
+        const [existe] = await connection.query('SELECT id FROM mesas WHERE id = ? AND activa = 1 FOR UPDATE', [mesaId]);
+        if (existe.length === 0) {
+            await connection.rollback();
+            connection.release();
+            return res.status(404).json({ error: 'Mesa no encontrada' });
         }
 
-        const [result] = await db.query('DELETE FROM mesas WHERE id = ?', [mesaId]);
-        if (result.affectedRows === 0) return res.status(404).json({ error: 'Mesa no encontrada' });
+        const [activos] = await connection.query(
+            `SELECT COUNT(*) AS cnt
+             FROM pedido_items i
+             JOIN pedidos p ON p.id = i.pedido_id
+             WHERE p.mesa_id = ?
+               AND p.estado NOT IN ('cerrado','cancelado','rechazado')
+               AND i.estado NOT IN ('cancelado','rechazado')`,
+            [mesaId]
+        );
+        if (Number(activos?.[0]?.cnt || 0) > 0) {
+            await connection.rollback();
+            connection.release();
+            return res.status(400).json({ error: 'No se puede eliminar: la mesa está ocupada' });
+        }
 
+        // Cerrar comandas vacías que pudieran haberse abierto por accidente.
+        await connection.query(
+            `UPDATE pedidos SET estado = 'cancelado'
+             WHERE mesa_id = ? AND estado NOT IN ('cerrado','cancelado','rechazado')`,
+            [mesaId]
+        );
+        const [result] = await connection.query(
+            `UPDATE mesas SET activa = 0, estado = 'libre' WHERE id = ?`,
+            [mesaId]
+        );
+        if (result.affectedRows === 0) {
+            await connection.rollback();
+            connection.release();
+            return res.status(404).json({ error: 'Mesa no encontrada' });
+        }
+        await connection.commit();
+        connection.release();
         res.json({ message: 'Mesa eliminada' });
     } catch (error) {
+        if (connection) {
+            try { await connection.rollback(); } catch (_) {}
+            connection.release();
+        }
         console.error('Error al eliminar mesa:', error);
         res.status(500).json({ error: 'Error al eliminar mesa' });
     }
@@ -375,7 +422,7 @@ router.delete('/:mesaId', async (req, res) => {
 
 // POST /mesas/abrir - API: abre (o recupera) pedido abierto para una mesa
 router.post('/abrir', async (req, res) => {
-    const { mesa_id, cliente_id, notas } = req.body || {};
+    const { mesa_id, cliente_id, notas, numero_personas } = req.body || {};
     if (!mesa_id) return res.status(400).json({ error: 'mesa_id requerido' });
     const meseroNombre = String(req.session?.user?.nombre || req.session?.user?.usuario || '').trim() || null;
     try {
@@ -408,9 +455,19 @@ router.post('/abrir', async (req, res) => {
                 });
             }
 
+            const personas = Number(numero_personas);
+            if (!Number.isInteger(personas) || personas < 1 || personas > 100) {
+                await connection.rollback();
+                connection.release();
+                return res.status(422).json({
+                    error: 'Indica el número de personas para abrir el pedido',
+                    requiere_numero_personas: true
+                });
+            }
+
             const [insert] = await connection.query(
-                `INSERT INTO pedidos (mesa_id, cliente_id, mesero_nombre, estado, total, notas) VALUES (?, ?, ?, 'abierto', 0, ?)` ,
-                [mesa_id, cliente_id || null, meseroNombre, notas || null]
+                `INSERT INTO pedidos (mesa_id, cliente_id, mesero_nombre, numero_personas, estado, total, notas) VALUES (?, ?, ?, ?, 'abierto', 0, ?)` ,
+                [mesa_id, cliente_id || null, meseroNombre, personas, notas || null]
             );
 
             // Importante: abrir pedido no fuerza "ocupada" si aún no hay items.
@@ -426,6 +483,7 @@ router.post('/abrir', async (req, res) => {
                     mesa_id,
                     cliente_id: cliente_id || null,
                     mesero_nombre: meseroNombre,
+                    numero_personas: personas,
                     estado: 'abierto',
                     total: 0,
                     notas: notas || null
@@ -1087,7 +1145,7 @@ router.post('/pedidos/:pedidoId/facturar', async (req, res) => {
                         monto: Number(p.monto || 0),
                         referencia: (p.referencia != null && String(p.referencia).trim() !== '') ? String(p.referencia).trim() : null
                     }))
-                    .filter(p => ['efectivo', 'transferencia', 'tarjeta', 'qr'].includes(p.metodo) && Number.isFinite(p.monto) && p.monto > 0);
+                    .filter(p => ['efectivo', 'transferencia'].includes(p.metodo) && Number.isFinite(p.monto) && p.monto > 0);
             };
             const pagosNorm = normalizarPagos(pagos);
             const sumaPagos = pagosNorm.reduce((acc, p) => acc + Number(p.monto || 0), 0);
@@ -1101,7 +1159,7 @@ router.post('/pedidos/:pedidoId/facturar', async (req, res) => {
                 formaPagoDB = (pagosNorm.length === 1) ? pagosNorm[0].metodo : 'mixto';
             } else {
                 // Compatibilidad: si no envían pagos, usamos forma_pago (y creamos 1 registro en factura_pagos)
-                if (!['efectivo', 'transferencia', 'tarjeta', 'qr', 'mixto'].includes(formaPagoDB)) formaPagoDB = 'efectivo';
+                if (!['efectivo', 'transferencia', 'mixto'].includes(formaPagoDB)) formaPagoDB = 'efectivo';
             }
 
             const [facturaInsert] = await connection.query(
