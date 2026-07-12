@@ -100,8 +100,6 @@ $(function() {
                 <select class="form-select form-select-sm pm-metodo">
                   <option value="efectivo">Efectivo</option>
                   <option value="transferencia">Transferencia</option>
-                  <option value="tarjeta">Tarjeta</option>
-                  <option value="qr">QR</option>
                 </select>
               </div>
               <div class="col-4">
@@ -333,18 +331,43 @@ $(function() {
       `);
     });
     $('#totalPedido').text(formatear(total));
+    const personas = Math.max(1, Number(pedidoActual?.numero_personas || 1));
+    $('#pedidoPersonas').text(personas);
+    $('#promedioPersona').text(formatear(total / personas));
   }
 
   // Cargar pedido por mesa
-  async function abrirPedido(mesaId, mesaNumero){
+  async function abrirPedido(mesaId, mesaNumero, numeroPersonas = null){
     try{
-      const resp = await fetch('/api/mesas/abrir', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mesa_id: mesaId })});
+      const body = { mesa_id: mesaId };
+      if (numeroPersonas != null) body.numero_personas = Number(numeroPersonas);
+      const resp = await fetch('/api/mesas/abrir', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
       const data = await resp.json();
+      if (resp.status === 422 && data.requiere_numero_personas) {
+        const personasRes = await Swal.fire({
+          title: `Personas en mesa ${mesaNumero}`,
+          text: 'Este dato se solicita únicamente al abrir un pedido nuevo.',
+          input: 'number',
+          inputValue: 1,
+          inputAttributes: { min: '1', max: '100', step: '1' },
+          showCancelButton: true,
+          confirmButtonText: 'Abrir pedido',
+          cancelButtonText: 'Cancelar',
+          inputValidator: (value) => {
+            const n = Number(value);
+            if (!Number.isInteger(n) || n < 1 || n > 100) return 'Ingresa un número entre 1 y 100';
+            return undefined;
+          }
+        });
+        if (!personasRes.isConfirmed) return;
+        return abrirPedido(mesaId, mesaNumero, Number(personasRes.value));
+      }
       if(!resp.ok) throw new Error(data.error||'Error al abrir pedido');
       pedidoActual = data.pedido;
       autoListoComanda = !!data.auto_listo_comanda;
       imprimeServidor = !!data.imprime_servidor;
       $('#pedidoMesa').text(mesaNumero);
+      $('#pedidoPersonas').text(Math.max(1, Number(pedidoActual.numero_personas || 1)));
       await cargarPedido(pedidoActual.id);
       canvas.show();
     }catch(err){
@@ -356,6 +379,7 @@ $(function() {
     const resp = await fetch(`/api/mesas/pedidos/${pedidoId}`);
     const data = await resp.json();
     if(!resp.ok) throw new Error(data.error||'Error al cargar pedido');
+    pedidoActual = data.pedido || pedidoActual;
     items = data.items || [];
     renderItems();
   }
@@ -375,7 +399,7 @@ $(function() {
         const item = $(`
           <a href="#" class="list-group-item list-group-item-action">
             <div><strong>${p.codigo}</strong> - ${p.nombre}</div>
-            <div class="small text-muted">KG: $${p.precio_kg} | UND: $${p.precio_unidad} | LB: $${p.precio_libra}</div>
+            <div class="small text-muted">Precio: $${p.precio_unidad} por unidad</div>
           </a>`);
         item.on('click', e => {
           e.preventDefault();
@@ -1448,7 +1472,7 @@ $(function() {
 
     const confirmacion = await Swal.fire({
       title: `¿Eliminar mesa ${numero}?`,
-      text: 'Esta acción no se puede deshacer.',
+      text: 'La mesa desaparecerá del panel, pero sus pedidos históricos se conservarán.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Sí, eliminar',
