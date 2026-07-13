@@ -115,7 +115,7 @@ $(document).ready(function() {
                     .html(`
                         <div><strong>${producto.codigo}</strong> - ${producto.nombre}</div>
                         <div class="small text-muted">
-                            Precio: $${producto.precio_unidad} por unidad
+                            Precio: $${Number(producto.precio_unidad || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </div>
                     `)
                     .click(function(e) {
@@ -179,7 +179,7 @@ $(document).ready(function() {
         if (hasComma && hasDot) {
             normalized = normalized.replace(/,/g, '');
         } else if (hasComma && !hasDot) {
-            normalized = normalized.replace(/,/g, '.');
+            normalized = normalized.replace(/,/g, '');
         }
         normalized = normalized.replace(/[^\d.-]/g, '');
         const n = Number(normalized);
@@ -187,7 +187,7 @@ $(document).ready(function() {
     }
 
     function formatMoney(n) {
-        return `$${Number(n || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return `$${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
     }
 
     function almostEqualMoney(a, b) {
@@ -289,7 +289,7 @@ $(document).ready(function() {
                             .reverse()
                             .find(inp => inp && inp.dataset && inp.dataset.touched !== 'true');
                         if (candidate) {
-                            candidate.value = Number(remaining.toFixed(2)).toString();
+                            candidate.value = String(Math.round(remaining));
                             const montos2 = montoInputs.map(i => parseMoneyInput(i.value));
                             const sum2 = montos2.reduce((a, b) => a + b, 0);
                             sumEl.textContent = formatMoney(sum2);
@@ -345,7 +345,7 @@ $(document).ready(function() {
                 btnAdd.addEventListener('click', () => addRow('efectivo', '', ''));
 
                 // Fila inicial: por defecto todo en efectivo
-                addRow('efectivo', String(Number(total).toFixed(2)), '');
+                addRow('efectivo', String(Math.round(Number(total))), '');
 
                 window.__pm_getRows = () => rows;
                 window.__pm_setWarn = (msg) => {
@@ -391,7 +391,7 @@ $(document).ready(function() {
 
                 return pagos.map(p => ({
                     metodo: p.metodo,
-                    monto: Number(p.monto.toFixed(2)),
+                    monto: Math.round(Number(p.monto)),
                     referencia: p.referencia || ''
                 }));
             },
@@ -411,11 +411,11 @@ $(document).ready(function() {
             return;
         }
 
-        const cantidad = parseFloat($('#cantidad').val());
+        const cantidad = Number($('#cantidad').val());
         const unidad = $('#unidadMedida').val();
         const precio = parseFloat($('#precio').val());
 
-        if (!cantidad || !precio) {
+        if (!Number.isInteger(cantidad) || cantidad <= 0 || !precio) {
             mostrarAlerta('warning', 'Por favor complete todos los campos');
             return;
         }
@@ -447,9 +447,8 @@ $(document).ready(function() {
                 <tr>
                     <td>${item.nombre}</td>
                     <td>${item.cantidad}</td>
-                    <td>${item.unidad}</td>
-                    <td class="text-end">$${item.precio.toLocaleString('es-CO')}</td>
-                    <td class="text-end">$${item.subtotal.toLocaleString('es-CO')}</td>
+                    <td class="text-end">$${Number(item.precio || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                    <td class="text-end">$${Number(item.subtotal || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
                     <td class="text-center">
                         <button class="btn btn-danger btn-sm" onclick="eliminarProducto(${index})">
                             <i class="bi bi-trash"></i>
@@ -459,7 +458,7 @@ $(document).ready(function() {
             `);
         });
 
-        $('#totalFactura').text(totalFactura.toLocaleString('es-CO'));
+        $('#totalFactura').text(Number(totalFactura || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }));
     }
 
     // Función para eliminar producto

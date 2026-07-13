@@ -238,7 +238,6 @@ $(function(){
             </div>
             <div class="text-end">
               <div class="badge text-bg-light border">Líneas: ${totalLineas}</div>
-              <div class="badge text-bg-light border ms-1">Unidades: ${totalUnidades}</div>
             </div>
           </div>
           <div class="vstack gap-1">${detalles}</div>
@@ -303,7 +302,6 @@ $(function(){
             </div>
             <div class="text-end">
               <div class="badge text-bg-light border">Líneas: ${totalLineas}</div>
-              <div class="badge text-bg-light border ms-1">Unidades: ${totalUnidades}</div>
             </div>
           </div>
           <div class="vstack gap-1">${detalles}</div>

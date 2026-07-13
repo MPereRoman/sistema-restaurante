@@ -367,7 +367,7 @@ router.get('/export', async (req, res) => {
         wb.created = new Date();
         wb.modified = new Date();
 
-        const MONEDA = '#,##0.00';
+        const MONEDA = '#,##0';
 
         // ════════════════════════════════════════════════════════════════════
         // HOJA 1 — RESUMEN EJECUTIVO
@@ -472,7 +472,7 @@ router.get('/export', async (req, res) => {
 
         const detColNames = [
             'Factura #', 'Fecha', 'Cliente', 'Método Pago',
-            'Producto', 'Cantidad', 'Unidad', 'Precio Unitario', 'Subtotal Ítem', 'Total Factura'
+            'Producto', 'Cantidad', 'Precio Unitario', 'Subtotal Ítem', 'Total Factura'
         ];
         const detHeader = wsD.addRow(detColNames);
         applyHeaderStyle(detHeader, 'FF1E3A5F');
@@ -493,7 +493,6 @@ router.get('/export', async (req, res) => {
                 fmtMetodo(r.forma_pago),
                 r.producto || '(sin producto)',
                 Number(r.cantidad || 0),
-                (r.unidad_medida || ''),
                 Number(r.precio_unitario || 0),
                 Number(r.subtotal_item || 0),
                 totalFactura
@@ -505,10 +504,10 @@ router.get('/export', async (req, res) => {
 
             // Formatos numéricos
             dataRow.getCell(6).numFmt  = '#,##0.##';   // cantidad
-            dataRow.getCell(8).numFmt  = MONEDA;        // precio unitario
-            dataRow.getCell(9).numFmt  = MONEDA;        // subtotal item
+            dataRow.getCell(7).numFmt  = MONEDA;        // precio unitario
+            dataRow.getCell(8).numFmt  = MONEDA;        // subtotal item
             if (totalFactura !== null) {
-                dataRow.getCell(10).numFmt = MONEDA;
+                dataRow.getCell(9).numFmt = MONEDA;
                 dataRow.getCell(10).font = { bold: true, color: { argb: 'FF1B5E20' } };
             }
             dataRow.getCell(1).alignment = { horizontal: 'center' };
@@ -545,10 +544,9 @@ router.get('/export', async (req, res) => {
         wsD.getColumn(4).width  = 16;  // Método pago
         wsD.getColumn(5).width  = 32;  // Producto
         wsD.getColumn(6).width  = 12;  // Cantidad
-        wsD.getColumn(7).width  = 10;  // Unidad
-        wsD.getColumn(8).width  = 18;  // Precio unitario
-        wsD.getColumn(9).width  = 18;  // Subtotal ítem
-        wsD.getColumn(10).width = 18;  // Total factura
+        wsD.getColumn(7).width  = 18;  // Precio
+        wsD.getColumn(8).width  = 18;  // Subtotal
+        wsD.getColumn(9).width  = 18;  // Total factura
 
         // ════════════════════════════════════════════════════════════════════
         // HOJA 3 — RESUMEN POR MÉTODO DE PAGO

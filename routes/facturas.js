@@ -130,16 +130,16 @@ function buildFacturaTexto({ factura, detalles, pagos, negocio }) {
     out.push(line);
     (detalles || []).forEach((d) => {
         out.push(String(d?.producto_nombre || ''));
-        out.push(`${Number(d?.cantidad || 0)}${String(d?.unidad_medida || '')}  $${Number(d?.precio_unitario || 0).toLocaleString('es-CO')}  $${Number(d?.subtotal || 0).toLocaleString('es-CO')}`);
+        out.push(`${Number(d?.cantidad || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}  $${Number(d?.precio_unitario || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}  $${Number(d?.subtotal || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
     });
     out.push(line);
-    out.push(`Total: $${Number(factura?.total || 0).toLocaleString('es-CO')}`);
+    out.push(`Total: $${Number(factura?.total || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
     if (Array.isArray(pagos) && pagos.length > 0) {
         out.push('Pagos:');
         pagos.forEach((p) => {
             const metodo = String(p?.metodo || '').trim();
             const ref = String(p?.referencia || '').trim();
-            out.push(`${metodo}: $${Number(p?.monto || 0).toLocaleString('es-CO')}${ref ? ` (${ref})` : ''}`);
+            out.push(`${metodo}: $${Number(p?.monto || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}${ref ? ` (${ref})` : ''}`);
         });
     } else {
         out.push(`Forma de pago: ${String(factura?.forma_pago || '')}`);

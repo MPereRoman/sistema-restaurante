@@ -311,7 +311,7 @@ router.get('/plantilla', async (req, res) => {
         table.columns = [
             { header: 'codigo', key: 'codigo', width: 18 },
             { header: 'nombre', key: 'nombre', width: 32 },
-            { header: 'precio_unidad', key: 'precio_unidad', width: 16 }
+            { header: 'precio', key: 'precio_unidad', width: 16 }
         ];
         const headerRow = table.getRow(1);
         headerRow.font = { bold: true };
@@ -350,7 +350,7 @@ router.post('/importar', upload.single('archivo'), async (req, res) => {
         const ws = wb.getWorksheet('Productos') || wb.worksheets[0];
         if (!ws) return res.status(400).json({ error: 'Hoja Productos no encontrada' });
 
-        const header = ['codigo','nombre','precio_unidad'];
+        const header = ['codigo','nombre','precio'];
         const colIdx = header.map((h,i)=> i+1);
         const rows = [];
         ws.eachRow((row, idx) => {
@@ -360,7 +360,7 @@ router.post('/importar', upload.single('archivo'), async (req, res) => {
             rows.push({
                 codigo: String(r.codigo).trim(),
                 nombre: String(r.nombre).trim(),
-                precio_unidad: Number(r.precio_unidad||0)
+                precio_unidad: Number(r.precio ?? r.precio_unidad ?? 0)
             });
         });
 

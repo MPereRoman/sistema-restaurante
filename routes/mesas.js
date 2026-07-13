@@ -694,7 +694,7 @@ router.post('/pedidos/:pedidoId/items', async (req, res) => {
     try {
         const pedidoId = req.params.pedidoId;
         const { producto_id, cantidad, unidad, precio, nota } = req.body || {};
-        if (!producto_id || !cantidad || !precio) {
+        if (!producto_id || !Number.isInteger(Number(cantidad)) || Number(cantidad) <= 0 || !precio) {
             return res.status(400).json({ error: 'producto_id, cantidad y precio son requeridos' });
         }
         const subtotal = Number(cantidad) * Number(precio);
@@ -752,8 +752,8 @@ router.put('/items/:itemId', async (req, res) => {
             }
 
             const nuevaCantidad = (cantidad != null && cantidad !== '') ? Number(cantidad) : Number(actual.cantidad || 0);
-            if (!Number.isFinite(nuevaCantidad) || nuevaCantidad <= 0) {
-                throw new Error('La cantidad debe ser mayor a 0');
+            if (!Number.isInteger(nuevaCantidad) || nuevaCantidad <= 0) {
+                throw new Error('La cantidad debe ser un número entero mayor a 0');
             }
             const nuevaNota = (nota != null) ? String(nota).trim() : String(actual.nota || '').trim();
             const precio = Number(actual.precio_unitario || 0);

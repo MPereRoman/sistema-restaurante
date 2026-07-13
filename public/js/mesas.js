@@ -20,14 +20,14 @@ $(function() {
     const v = String(value ?? '').trim();
     if (!v) return 0;
     // Si tiene coma y punto, asumimos coma miles y punto decimal (ej: 10,000.50)
-    // Si solo tiene coma, asumimos coma decimal (ej: 10,5)
+    // La coma siempre separa miles y el punto separa decimales.
     let normalized = v.replace(/\s/g, '');
     const hasComma = normalized.includes(',');
     const hasDot = normalized.includes('.');
     if (hasComma && hasDot) {
       normalized = normalized.replace(/,/g, '');
     } else if (hasComma && !hasDot) {
-      normalized = normalized.replace(/,/g, '.');
+      normalized = normalized.replace(/,/g, '');
     }
     // Quitar cualquier caracter no numérico excepto '.' y '-'
     normalized = normalized.replace(/[^\d.-]/g, '');
@@ -36,7 +36,7 @@ $(function() {
   }
 
   function formatMoney(n) {
-    return `$${Number(n || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `$${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
   }
 
   function almostEqualMoney(a, b) {
@@ -152,7 +152,7 @@ $(function() {
               .reverse()
               .find(inp => inp && inp.dataset && inp.dataset.touched !== 'true');
             if (candidate) {
-              candidate.value = Number(remaining.toFixed(2)).toString();
+              candidate.value = String(Math.round(remaining));
               // NO marcar touched aquí: sigue siendo autocompletado
               // Recalcular sin bucle infinito
               const montos2 = montoInputs.map(i => parseMoneyInput(i.value));
@@ -214,7 +214,7 @@ $(function() {
         btnAdd.addEventListener('click', () => addRow('efectivo', '', ''));
 
         // Fila inicial: por defecto todo en efectivo
-        addRow('efectivo', String(Number(total).toFixed(2)), '');
+        addRow('efectivo', String(Math.round(Number(total))), '');
 
         // Exponer helpers para preConfirm
         window.__pm_getRows = () => rows;
@@ -262,7 +262,7 @@ $(function() {
         // Limpieza final
         return pagos.map(p => ({
           metodo: p.metodo,
-          monto: Number(p.monto.toFixed(2)),
+          monto: Math.round(Number(p.monto)),
           referencia: p.referencia || ''
         }));
       },
@@ -282,7 +282,7 @@ $(function() {
   });
 
   // Helpers UI
-  function formatear(valor){return `$${Number(valor||0).toLocaleString('es-CO')}`}
+  function formatear(valor){return `$${Number(valor||0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
   function isItemAnulable(estado){
     const e = String(estado || '').toLowerCase();
     return ['pendiente','enviado','preparando','listo'].includes(e);
@@ -399,7 +399,7 @@ $(function() {
         const item = $(`
           <a href="#" class="list-group-item list-group-item-action">
             <div><strong>${p.codigo}</strong> - ${p.nombre}</div>
-            <div class="small text-muted">Precio: $${p.precio_unidad} por unidad</div>
+            <div class="small text-muted">Precio: $${Number(p.precio_unidad || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
           </a>`);
         item.on('click', e => {
           e.preventDefault();
@@ -450,7 +450,7 @@ $(function() {
           title: `Cantidad para ${p.nombre}`,
           input: 'number',
           inputValue: 1,
-          inputAttributes:{ step: '0.1', min: '0.1' },
+          inputAttributes:{ step: '1', min: '1' },
           showCancelButton: true,
           didOpen: () => {
             const inp = document.querySelector('.swal2-input');
@@ -489,33 +489,24 @@ $(function() {
           ? hijosItems.map(it => ({ key: `i_${it.id}`, label: String(it.nombre || '').trim() }))
           : (hijosProductos || []).map(pr => ({ key: `p_${pr.id}`, label: String(pr.nombre || '').trim() }));
 
-        const hijosHtml = listaHijos.map(h => {
-          const key = String(h.key);
-          const label = escapeHtml(h.label || '');
-          const checkboxId = `phH_${key.replace(/[^a-zA-Z0-9_]/g,'_')}`;
-          return `
-            <div class="form-check">
-              <input class="form-check-input ph-hijo" type="checkbox" value="${escapeHtml(key)}" id="${checkboxId}">
-              <label class="form-check-label" for="${checkboxId}">${label}</label>
-            </div>
-          `;
-        }).join('');
+        const hijosHtml = renderSelectorVariantes(listaHijos, 'ph');
 
         const result = await Swal.fire({
           title: `Montar ${escapeHtml(p.nombre)}`,
           html: `
             <div class="text-start">
               <div class="small text-muted mb-2">
-                Selecciona los <strong>hijos</strong> (opcional) y escribe la <strong>observación</strong>. No cambia el precio del producto padre.
+                Distribuye la cantidad del producto <strong>base</strong> entre sus <strong>variantes</strong>.
               </div>
 
               <label class="form-label small mb-1">Cantidad</label>
-              <input id="phCantidad" type="number" class="form-control mb-2" value="1" step="0.1" min="0.1" />
+              <input id="phCantidad" type="number" class="form-control mb-2" value="1" step="1" min="1" />
 
-              <label class="form-label small mb-1">Hijos</label>
-              <div class="border rounded p-2 mb-2" style="max-height:220px; overflow:auto;">
+              <label class="form-label small mb-1">Variantes</label>
+              <div class="border rounded p-2 mb-2 ph-variantes" style="max-height:220px; overflow:auto;">
                 ${hijosHtml}
               </div>
+              <div class="small text-muted mb-2">Asignadas: <strong id="phVariantesTotal">0</strong> de <strong id="phVariantesLimite">1</strong></div>
 
               <label class="form-label small mb-1">Observación (opcional)</label>
               <input id="phObs" type="text" class="form-control" placeholder="Ej: Poco arroz" />
@@ -537,18 +528,22 @@ $(function() {
             // Enfocar cantidad al abrir
             const qty = document.getElementById('phCantidad');
             if (qty) setTimeout(() => { try { qty.focus(); qty.select(); } catch(_) {} }, 0);
+            activarSelectorVariantes('ph', 'phCantidad');
           },
           preConfirm: () => {
             const qty = Number(document.getElementById('phCantidad')?.value || 0);
-            if (!Number.isFinite(qty) || qty <= 0) {
-              Swal.showValidationMessage('La cantidad debe ser mayor a 0');
+            if (!Number.isInteger(qty) || qty <= 0) {
+              Swal.showValidationMessage('La cantidad debe ser un número entero mayor a 0');
               return false;
             }
             const obs = (document.getElementById('phObs')?.value || '').trim();
-            const hijosSel = Array.from(document.querySelectorAll('.ph-hijo:checked'))
-              .map(ch => String(ch.value || '').trim())
-              .filter(Boolean);
-            return { qty, obs, hijosSel };
+            const variantes = leerSelectorVariantes('ph');
+            const totalVariantes = variantes.reduce((sum, v) => sum + v.cantidad, 0);
+            if (totalVariantes !== qty) {
+              Swal.showValidationMessage(`Asigna exactamente ${qty} variante${qty === 1 ? '' : 's'}`);
+              return false;
+            }
+            return { qty, obs, variantes };
           }
         });
 
@@ -556,11 +551,14 @@ $(function() {
 
         cantidad = Number(result.value.qty);
         const obs = String(result.value.obs || '').trim();
-        const hijosSel = Array.isArray(result.value.hijosSel) ? result.value.hijosSel : [];
+        const variantes = Array.isArray(result.value.variantes) ? result.value.variantes : [];
 
         // Construir nota final: "Hijo1 / Hijo2 / Obs. ..."
         const mapLabel = new Map(listaHijos.map(h => [String(h.key), String(h.label || '').trim()]));
-        const nombresSel = hijosSel.map(k => mapLabel.get(String(k)) || '').map(s => String(s || '').trim()).filter(Boolean);
+        const nombresSel = variantes.map(v => {
+          const label = String(mapLabel.get(String(v.key)) || '').trim();
+          return v.cantidad > 1 ? `${v.cantidad}x ${label}` : label;
+        }).filter(Boolean);
 
         const parts = [...nombresSel];
         if (obs) parts.push(`Obs. ${obs}`);
@@ -577,6 +575,62 @@ $(function() {
       // limpiar y enfocar el buscador para el siguiente producto
       $('#buscarProductoMesa').val('').focus();
     });
+  }
+
+  function renderSelectorVariantes(variantes, prefijo, cantidades = {}){
+    return (variantes || []).map(v => {
+      const key = String(v.key || '');
+      const cantidad = Math.max(0, Number(cantidades[key] || 0));
+      return `
+        <div class="d-flex align-items-center gap-2 py-1 variante-row" data-variante-key="${escapeHtml(key)}">
+          <div class="flex-grow-1">${escapeHtml(v.label || '')}</div>
+          <button type="button" class="btn btn-sm btn-outline-secondary variante-btn" data-delta="-1" aria-label="Restar variante">−</button>
+          <input type="text" class="form-control form-control-sm text-center variante-cantidad" value="${cantidad}" readonly style="width:48px">
+          <button type="button" class="btn btn-sm btn-outline-primary variante-btn" data-delta="1" aria-label="Sumar variante">+</button>
+        </div>`;
+    }).join('');
+  }
+
+  function leerSelectorVariantes(prefijo){
+    return Array.from(document.querySelectorAll(`.${prefijo}-variantes .variante-row`)).map(row => ({
+      key: String(row.dataset.varianteKey || ''),
+      cantidad: Math.max(0, Number(row.querySelector('.variante-cantidad')?.value || 0))
+    })).filter(v => v.key && v.cantidad > 0);
+  }
+
+  function activarSelectorVariantes(prefijo, cantidadInputId){
+    const contenedor = document.querySelector(`.${prefijo}-variantes`);
+    const cantidadInput = document.getElementById(cantidadInputId);
+    if (!contenedor || !cantidadInput) return;
+
+    const actualizar = () => {
+      const limite = Math.max(1, Math.floor(Number(cantidadInput.value || 1)));
+      const inputs = Array.from(contenedor.querySelectorAll('.variante-cantidad'));
+      const total = inputs.reduce((sum, input) => sum + Number(input.value || 0), 0);
+      const totalEl = document.getElementById(`${prefijo}VariantesTotal`);
+      const limiteEl = document.getElementById(`${prefijo}VariantesLimite`);
+      if (totalEl) totalEl.textContent = total;
+      if (limiteEl) limiteEl.textContent = limite;
+      contenedor.querySelectorAll('.variante-row').forEach(row => {
+        const actual = Number(row.querySelector('.variante-cantidad')?.value || 0);
+        const menos = row.querySelector('[data-delta="-1"]');
+        const mas = row.querySelector('[data-delta="1"]');
+        if (menos) menos.disabled = actual <= 0;
+        if (mas) mas.disabled = total >= limite;
+      });
+    };
+
+    contenedor.addEventListener('click', event => {
+      const boton = event.target.closest('.variante-btn');
+      if (!boton) return;
+      const input = boton.closest('.variante-row')?.querySelector('.variante-cantidad');
+      if (!input) return;
+      const delta = Number(boton.dataset.delta || 0);
+      input.value = Math.max(0, Number(input.value || 0) + delta);
+      actualizar();
+    });
+    cantidadInput.addEventListener('input', actualizar);
+    actualizar();
   }
 
   // Cargar hijos configurados de un producto (items preferidos, productos como fallback).
@@ -622,10 +676,11 @@ $(function() {
       .trim();
     const byLabel = new Map((listaHijos || []).map(h => [normalize(h.label), String(h.key)]));
 
-    if (!notaRaw) return { selectedKeys: [], obs: '' };
+    if (!notaRaw) return { selectedKeys: [], cantidades: {}, obs: '' };
 
     const parts = notaRaw.split('/').map(p => String(p || '').trim()).filter(Boolean);
     const selected = [];
+    const cantidades = {};
     const extras = [];
     let obs = '';
 
@@ -635,15 +690,20 @@ $(function() {
         if (txt) obs = txt;
         return;
       }
-      const key = byLabel.get(normalize(p));
-      if (key) selected.push(key);
-      else extras.push(p);
+      const matchCantidad = p.match(/^(\d+)x\s+(.+)$/i);
+      const cantidad = matchCantidad ? Math.max(1, Number(matchCantidad[1])) : 1;
+      const etiqueta = matchCantidad ? matchCantidad[2] : p;
+      const key = byLabel.get(normalize(etiqueta));
+      if (key) {
+        selected.push(key);
+        cantidades[key] = (cantidades[key] || 0) + cantidad;
+      } else extras.push(p);
     });
 
     if (extras.length > 0) {
       obs = obs ? `${extras.join(' / ')} / ${obs}` : extras.join(' / ');
     }
-    return { selectedKeys: selected, obs };
+    return { selectedKeys: selected, cantidades, obs };
   }
 
   // Editar item del pedido (solo estado pendiente)
@@ -660,7 +720,6 @@ $(function() {
     const hijos = await cargarHijosProducto(item.producto_id);
     const hasHijos = Array.isArray(hijos) && hijos.length > 0;
     const notaParsed = parseNotaConHijos(item.nota, hijos);
-    const selectedSet = new Set(notaParsed.selectedKeys);
 
     const result = await runWithOffcanvasHidden(async () => {
       return await Swal.fire({
@@ -668,23 +727,14 @@ $(function() {
         html: `
           <div class="text-start">
             <label class="form-label small">Cantidad</label>
-            <input id="editItemCantidad" type="number" class="form-control mb-2" step="0.1" min="0.1" value="${Number(item.cantidad || 1)}">
+            <input id="editItemCantidad" type="number" class="form-control mb-2" step="1" min="1" value="${Math.max(1, Math.round(Number(item.cantidad || 1)))}">
 
             ${hasHijos ? `
-              <label class="form-label small mb-1">Hijos</label>
-              <div class="border rounded p-2 mb-2" style="max-height:220px; overflow:auto;">
-                ${hijos.map(h => {
-                  const key = String(h.key);
-                  const checkboxId = `edH_${key.replace(/[^a-zA-Z0-9_]/g,'_')}`;
-                  const checked = selectedSet.has(key) ? 'checked' : '';
-                  return `
-                    <div class="form-check">
-                      <input class="form-check-input edit-item-hijo" type="checkbox" value="${escapeHtml(key)}" id="${checkboxId}" ${checked}>
-                      <label class="form-check-label" for="${checkboxId}">${escapeHtml(h.label)}</label>
-                    </div>
-                  `;
-                }).join('')}
+              <label class="form-label small mb-1">Variantes</label>
+              <div class="border rounded p-2 mb-2 ed-variantes" style="max-height:220px; overflow:auto;">
+                ${renderSelectorVariantes(hijos, 'ed', notaParsed.cantidades)}
               </div>
+              <div class="small text-muted mb-2">Asignadas: <strong id="edVariantesTotal">0</strong> de <strong id="edVariantesLimite">${Math.max(1, Math.round(Number(item.cantidad || 1)))}</strong></div>
               <label class="form-label small">Observación (opcional)</label>
               <input id="editItemObs" type="text" class="form-control" value="${escapeHtml(String(notaParsed.obs || ''))}" placeholder="Ej: Poco arroz">
             ` : `
@@ -705,21 +755,28 @@ $(function() {
               el.addEventListener(evt, (ev) => ev.stopPropagation());
             });
           });
+          if (hasHijos) activarSelectorVariantes('ed', 'editItemCantidad');
         },
         preConfirm: () => {
           const cantidad = Number(document.getElementById('editItemCantidad')?.value || 0);
-          if(!Number.isFinite(cantidad) || cantidad <= 0){
-            Swal.showValidationMessage('La cantidad debe ser mayor a 0');
+          if(!Number.isInteger(cantidad) || cantidad <= 0){
+            Swal.showValidationMessage('La cantidad debe ser un número entero mayor a 0');
             return false;
           }
 
           if (hasHijos) {
             const obs = String(document.getElementById('editItemObs')?.value || '').trim();
-            const hijosSel = Array.from(document.querySelectorAll('.edit-item-hijo:checked'))
-              .map(ch => String(ch.value || '').trim())
-              .filter(Boolean);
+            const variantes = leerSelectorVariantes('ed');
+            const totalVariantes = variantes.reduce((sum, v) => sum + v.cantidad, 0);
+            if (totalVariantes !== cantidad) {
+              Swal.showValidationMessage(`Asigna exactamente ${cantidad} variante${cantidad === 1 ? '' : 's'}`);
+              return false;
+            }
             const mapLabel = new Map(hijos.map(h => [String(h.key), String(h.label || '').trim()]));
-            const nombresSel = hijosSel.map(k => mapLabel.get(k) || '').filter(Boolean);
+            const nombresSel = variantes.map(v => {
+              const label = mapLabel.get(v.key) || '';
+              return v.cantidad > 1 ? `${v.cantidad}x ${label}` : label;
+            }).filter(Boolean);
             const parts = [...nombresSel];
             if (obs) parts.push(`Obs. ${obs}`);
             return { cantidad, nota: parts.join(' / ') };

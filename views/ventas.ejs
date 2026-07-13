@@ -120,7 +120,7 @@
                     <div class="col-md-3">
                         <div class="input-group">
                             <span class="input-group-text"><i class="bi bi-search"></i></span>
-                            <input type="text" id="buscarVentas" class="form-control" placeholder="Buscar por cliente o # factura">
+                            <input type="text" id="buscarVentas" class="form-control" placeholder="Buscar por # de factura">
                         </div>
                     </div>
                     <div class="col-md-3 d-flex justify-content-end gap-2">
@@ -136,7 +136,6 @@
                             <tr>
                                 <th>Factura #</th>
                                 <th>Fecha</th>
-                                <th>Cliente</th>
                                 <th>Forma de Pago</th>
                                 <th class="text-end">Total</th>
                                 <th class="text-center">Acciones</th>
@@ -147,9 +146,8 @@
                                 <tr>
                                     <td><%= venta.id %></td>
                                     <td><%= new Date(venta.fecha).toLocaleString() %></td>
-                                    <td><%= venta.cliente_nombre %></td>
                                     <td><%= venta.forma_pago.charAt(0).toUpperCase() + venta.forma_pago.slice(1) %></td>
-                                    <td class="text-end" data-total="<%= venta.total %>">$<%= Number(venta.total).toFixed(2) %></td>
+                                    <td class="text-end" data-total="<%= venta.total %>">$<%= Number(venta.total).toLocaleString('en-US', { maximumFractionDigits: 0 }) %></td>
                                     <td class="text-center">
                                         <button class="btn btn-sm btn-outline-info me-1 btn-detalles" 
                                                 data-factura-id="<%= venta.id %>"
@@ -287,11 +285,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="row mb-3">
-                        <div class="col-md-6">
-                            <h6>Información del Cliente</h6>
-                            <div id="detallesCliente"></div>
-                        </div>
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <h6>Información de la Factura</h6>
                             <div id="detallesFactura"></div>
                         </div>
@@ -303,7 +297,6 @@
                                 <tr>
                                     <th>Producto</th>
                                     <th class="text-end">Cantidad</th>
-                                    <th>Unidad</th>
                                     <th class="text-end">Precio Unit.</th>
                                     <th class="text-end">Subtotal</th>
                                 </tr>
@@ -311,7 +304,7 @@
                             <tbody id="detallesProductos"></tbody>
                             <tfoot class="table-light fw-bold">
                                 <tr>
-                                    <td colspan="4" class="text-end">Total:</td>
+                                    <td colspan="3" class="text-end">Total:</td>
                                     <td class="text-end" id="detallesTotal"></td>
                                 </tr>
                             </tfoot>
@@ -381,7 +374,7 @@
                                         ${data.pagos.map(p => `
                                             <li>
                                                 <strong>${(p.metodo||'').charAt(0).toUpperCase() + (p.metodo||'').slice(1)}:</strong>
-                                                $${Number(p.monto||0).toFixed(2)}
+                                                $${Number(p.monto||0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                                                 ${p.referencia ? `<span class="text-muted">(${p.referencia})</span>` : ''}
                                             </li>
                                         `).join('')}
@@ -406,15 +399,14 @@
                         tbody.append(`
                             <tr>
                                 <td>${producto.nombre}</td>
-                                <td class="text-end">${cantidad.toFixed(2)}</td>
-                                <td>${producto.unidad || 'N/A'}</td>
-                                <td class="text-end">$${precio.toFixed(2)}</td>
-                                <td class="text-end">$${subtotal.toFixed(2)}</td>
+                                <td class="text-end">${Number(cantidad).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                                <td class="text-end">$${Number(precio).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                                <td class="text-end">$${Number(subtotal).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
                             </tr>
                         `);
                     });
 
-                    $('#detallesTotal').text(`$${totalGeneral.toFixed(2)}`);
+                    $('#detallesTotal').text(`$${Number(totalGeneral).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
                     detallesModal.show();
                 },
                 error: function() {
@@ -482,9 +474,9 @@
             const tqr = Number(t.qr || 0);
             const tge = Number(t.general || (tef + ttr + tta + tqr));
 
-            document.getElementById('totalEfectivo').textContent = `$${tef.toFixed(2)}`;
-            document.getElementById('totalTransferencia').textContent = `$${ttr.toFixed(2)}`;
-            document.getElementById('totalGeneral').textContent = `$${tge.toFixed(2)}`;
+            document.getElementById('totalEfectivo').textContent = `$${tef.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+            document.getElementById('totalTransferencia').textContent = `$${ttr.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+            document.getElementById('totalGeneral').textContent = `$${tge.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
         }
 
         // Aplicar al cargar la página (ya incluye filtros por fecha/búsqueda)
@@ -497,7 +489,7 @@
 
             // --- Helpers ---
             function fmt(n) {
-                return '$' + Number(n || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                return '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
             }
 
             // --- KPIs ---

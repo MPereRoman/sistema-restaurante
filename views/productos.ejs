@@ -84,7 +84,7 @@
                             <tr>
                                 <th>Código</th>
                                 <th>Nombre</th>
-                                <th class="text-end">Precio UND</th>
+                                <th class="text-end">Precio</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>
@@ -93,7 +93,7 @@
                                 <tr>
                                     <td><%= producto.codigo %></td>
                                     <td><%= producto.nombre %></td>
-                                    <td class="text-end">$<%= (Number(producto.precio_unidad) || 0).toFixed(2) %></td>
+                                    <td class="text-end">$<%= (Number(producto.precio_unidad) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }) %></td>
                                     <td class="text-center">
                                         <div class="action-buttons">
                                             <!-- Gestión de productos hijos (Padre -> Hijos) -->
@@ -102,7 +102,7 @@
                                                     data-id="<%= producto.id %>"
                                                     data-nombre="<%= producto.nombre %>"
                                                     data-action="hijos"
-                                                    title="Gestionar hijos (combo/variantes)">
+                                                    title="Gestionar variantes del producto base">
                                                 <i class="bi bi-diagram-3"></i>
                                             </button>
                                             <button class="btn btn-sm btn-outline-primary me-1" 
@@ -158,8 +158,8 @@
                             </div>
                             <div class="col-12">
                                 <div class="mb-3">
-                                    <label class="form-label">Precio por unidad</label>
-                                    <input type="number" class="form-control" id="precioUnidad" step="0.01" min="0" required>
+                                    <label class="form-label">Precio</label>
+                                    <input type="number" class="form-control" id="precioUnidad" step="1" min="0" required>
                                 </div>
                             </div>
                             <input type="hidden" id="precioLibra" value="0">
@@ -186,7 +186,7 @@
                 <div class="modal-header">
                     <h5 class="modal-title" id="hijosProductoModalLabel">
                         <i class="bi bi-diagram-3 me-2"></i>
-                        Hijos de: <span id="hijosPadreNombre" class="fw-semibold"></span>
+                        Variantes de la base: <span id="hijosPadreNombre" class="fw-semibold"></span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
@@ -194,21 +194,21 @@
                     <input type="hidden" id="hijosPadreId" value="">
 
                     <div class="alert alert-info py-2 small mb-3">
-                        Los hijos son <strong>opciones/descripción</strong> del producto padre. <strong>No cambian el precio</strong> del padre.
+                        Las variantes son opciones del producto base. <strong>No cambian el precio</strong> de la base.
                         Al montar el pedido, la selección se guarda en <code>pedido_items.nota</code> para que llegue a cocina.
                     </div>
 
                     <div class="row g-3">
                         <div class="col-12 col-lg-6">
                             <div class="mb-2">
-                                <label class="form-label fw-semibold mb-1">Agregar ítem</label>
+                                <label class="form-label fw-semibold mb-1">Agregar variante</label>
                                 <!-- Hijos como "items" de texto (NO son productos) -->
                                 <!-- Relacionado con: routes/productos.js (/:padreId/hijos-items) y public/js/productos.js (agregar/quitar items) -->
                                 <div class="input-group mb-2">
                                     <span class="input-group-text"><i class="bi bi-plus-lg"></i></span>
                                     <input id="nuevoItemHijoNombre" type="text" class="form-control" placeholder="Ej: Goulash de cerdo, Crema, Ensalada...">
                                     <button id="btnAgregarItemHijo" class="btn btn-primary" type="button">
-                                        Agregar ítem
+                                        Agregar variante
                                     </button>
                                 </div>
                                 <div class="form-text mb-2">
@@ -218,12 +218,12 @@
                         </div>
 
                         <div class="col-12 col-lg-6">
-                            <label class="form-label fw-semibold mb-1">Ítems configurados</label>
+                            <label class="form-label fw-semibold mb-1">Variantes configuradas</label>
                             <!-- Lista de items hijos (texto) -->
                             <!-- Relacionado con: database.sql -> producto_hijos_items -->
                             <div id="listaItemsHijosConfigurados" class="list-group mb-2"></div>
                             <div id="emptyItemsHijosConfigurados" class="text-muted small mt-2 d-none">
-                                Aún no hay ítems hijos configurados para este producto.
+                                Aún no hay variantes configuradas para este producto base.
                             </div>
                         </div>
                     </div>

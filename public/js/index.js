@@ -92,7 +92,7 @@ $(document).ready(function() {
                     <div>
                         <strong>${item.codigo}</strong> - ${item.nombre}
                         <div class="small text-muted">
-                            Precio: $${item.precio_unidad} por unidad
+                            Precio: $${Number(item.precio_unidad || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </div>
                     </div>
                 `);
@@ -348,7 +348,7 @@ $(document).ready(function() {
                 $(`<a class="dropdown-item">
                     <strong>${producto.codigo}</strong> - ${producto.nombre}
                     <div class="small text-muted">
-                        Precio: $${producto.precio_unidad} por unidad
+                        Precio: $${Number(producto.precio_unidad || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     </div>
                 </a>`)
                 .on('click', function() {
@@ -480,9 +480,8 @@ $(document).ready(function() {
                 <tr>
                     <td>${item.codigo} - ${item.nombre}</td>
                     <td class="text-end">${item.cantidad}</td>
-                    <td>${item.unidad_medida}</td>
-                    <td class="text-end">$${item.precio_unitario.toFixed(2)}</td>
-                    <td class="text-end">$${item.subtotal.toFixed(2)}</td>
+                    <td class="text-end">$${Number(item.precio_unitario || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                    <td class="text-end">$${Number(item.subtotal || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
                     <td class="text-center">
                         <button class="btn btn-sm btn-outline-danger" onclick="eliminarProductoFactura(${index})">
                             <i class="bi bi-trash"></i>
@@ -492,7 +491,7 @@ $(document).ready(function() {
             `);
         });
 
-        $('#totalFactura').text(totalFactura.toFixed(2));
+        $('#totalFactura').text(Number(totalFactura || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }));
     }
 
     // Función para limpiar el formulario de producto
@@ -543,7 +542,7 @@ $(document).ready(function() {
                             </small>
                         </td>
                         <td><small>${productosResumen}</small></td>
-                        <td>$${pedido.total.toFixed(2)}</td>
+                        <td>$${Number(pedido.total || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
                                 <button class="btn btn-primary" onclick="cargarPedido(${index})" title="Cargar pedido">

@@ -185,12 +185,9 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-2">
-                        <input type="hidden" id="unidadMedida" value="UND">
-                        <span class="input-group-text">Unidad</span>
-                    </div>
-                    <div class="col-md-2">
-                        <input type="number" id="cantidad" class="form-control" placeholder="Cantidad" step="0.01">
+                    <input type="hidden" id="unidadMedida" value="UND">
+                    <div class="col-md-4">
+                        <input type="number" id="cantidad" class="form-control" placeholder="Cantidad" step="1" min="1">
                     </div>
                     <div class="col-md-2">
                         <input type="number" id="precio" class="form-control" placeholder="Precio" step="0.01">
@@ -208,7 +205,6 @@
                             <tr>
                                 <th>Producto</th>
                                 <th>Cantidad</th>
-                                <th>Unidad</th>
                                 <th class="text-end">Precio Unit.</th>
                                 <th class="text-end">Subtotal</th>
                                 <th class="text-center">Acciones</th>

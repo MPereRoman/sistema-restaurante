@@ -74,12 +74,12 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const resp = await fetch(`/api/productos/${encodeURIComponent(hijosPadreId)}/hijos-items`);
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Error al cargar ítems hijos');
+            if (!resp.ok) throw new Error(data.error || 'Error al cargar variantes');
 
             hijosItemsActuales = Array.isArray(data) ? data : [];
             renderItemsHijosActuales();
         } catch (err) {
-            lista.innerHTML = `<div class="list-group-item text-danger small">${escapeHtml(err.message || 'Error al cargar ítems hijos')}</div>`;
+            lista.innerHTML = `<div class="list-group-item text-danger small">${escapeHtml(err.message || 'Error al cargar variantes')}</div>`;
             hijosItemsActuales = [];
         }
     }
@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', function() {
             item.className = 'list-group-item d-flex justify-content-between align-items-center';
             item.innerHTML = `
               <div class="fw-semibold">${escapeHtml(it.nombre || '')}</div>
-              <button type="button" class="btn btn-sm btn-outline-danger" data-item-hijo-id="${escapeHtml(it.id)}" title="Quitar ítem hijo">
+              <button type="button" class="btn btn-sm btn-outline-danger" data-item-hijo-id="${escapeHtml(it.id)}" title="Quitar variante">
                 <i class="bi bi-x-lg"></i>
               </button>
             `;
@@ -117,10 +117,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({ nombre: String(nombre || '').trim() })
             });
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Error al agregar ítem hijo');
+            if (!resp.ok) throw new Error(data.error || 'Error al agregar variante');
             await cargarItemsHijosDelPadre();
         } catch (err) {
-            alert(err.message || 'No se pudo agregar el ítem hijo');
+            alert(err.message || 'No se pudo agregar la variante');
         }
     }
 
@@ -131,10 +131,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 headers: { 'Accept': 'application/json' }
             });
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Error al quitar ítem hijo');
+            if (!resp.ok) throw new Error(data.error || 'Error al quitar variante');
             await cargarItemsHijosDelPadre();
         } catch (err) {
-            alert(err.message || 'No se pudo quitar el ítem hijo');
+            alert(err.message || 'No se pudo quitar la variante');
         }
     }
 
@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!btn) return;
         const itemId = btn.getAttribute('data-item-hijo-id');
         if (!itemId) return;
-        if (confirm('¿Quitar este ítem hijo del producto padre?')) {
+        if (confirm('¿Quitar esta variante del producto base?')) {
             quitarItemHijo(itemId);
         }
     });
@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const input = document.getElementById('nuevoItemHijoNombre');
         if (!input) return;
         const raw = String(input.value || '').trim();
-        if (!raw) return alert('Escribe el nombre del ítem hijo.');
+        if (!raw) return alert('Escribe el nombre de la variante.');
 
         // Permitir agregar varios separados por coma
         const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
@@ -399,7 +399,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Función GLOBAL llamada desde views/productos.ejs (delegación en la tabla)
     // No la movemos a otro archivo para mantener relación directa con el panel actual.
     window.gestionarHijosProducto = async function (padreId, padreNombre) {
-        if (!modalHijos) return alert('Modal de hijos no disponible.');
+        if (!modalHijos) return alert('Gestión de variantes no disponible.');
 
         hijosPadreId = Number(padreId);
         hijosPadreNombre = String(padreNombre || '');
