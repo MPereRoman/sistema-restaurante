@@ -926,10 +926,6 @@ $(function() {
   // Facturar pedido
   $('#btnFacturarPedido').on('click', async function(){
     try{
-      const cliente = await runWithOffcanvasHidden(() => seleccionarClienteConBusqueda());
-      if(!cliente) return; // cancelado
-      const cliente_id = cliente.id;
-
       // Total del pedido basado en items actuales (mismo cálculo del render)
       const totalPedido = (items || []).reduce((acc, it) => {
         if (isItemExcluidoDeTotal(it.estado)) return acc;
@@ -948,7 +944,7 @@ $(function() {
       const resp = await fetch(`/api/mesas/pedidos/${pedidoActual.id}/facturar`, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ cliente_id, pagos })
+        body: JSON.stringify({ pagos })
       });
       const data = await resp.json();
       if(!resp.ok) throw new Error(data.error||'Error al facturar');

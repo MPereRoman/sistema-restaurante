@@ -164,6 +164,7 @@
             <div>Fecha: <%= new Date(factura.fecha).toLocaleString() %></div>
         </div>
 
+        <% if (false) { /* Datos de cliente ocultos del comprobante */ %>
         <div class="mb-3">
             <div><strong>Cliente:</strong> <%= factura.cliente_nombre %></div>
             <% if (factura.direccion) { %>
@@ -173,6 +174,9 @@
                 <div><strong>Teléfono:</strong> <%= factura.telefono %></div>
             <% } %>
         </div>
+
+        <div class="divider"></div>
+        <% } %>
 
         <div class="divider"></div>
 

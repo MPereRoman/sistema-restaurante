@@ -50,7 +50,7 @@ async function getTotalesPorMetodo(queryParams) {
             SELECT fp.metodo AS metodo, fp.monto AS monto
             FROM factura_pagos fp
             JOIN facturas f ON f.id = fp.factura_id
-            JOIN clientes c ON f.cliente_id = c.id
+            LEFT JOIN clientes c ON f.cliente_id = c.id
             ${whereSql}
 
             UNION ALL
@@ -58,7 +58,7 @@ async function getTotalesPorMetodo(queryParams) {
             -- Fallback legacy: facturas sin registros en factura_pagos
             SELECT f.forma_pago AS metodo, f.total AS monto
             FROM facturas f
-            JOIN clientes c ON f.cliente_id = c.id
+            LEFT JOIN clientes c ON f.cliente_id = c.id
             LEFT JOIN factura_pagos fp2 ON fp2.factura_id = f.id
             ${whereSqlFallback}
         ) t
@@ -84,7 +84,7 @@ async function getTotalesPorMetodo(queryParams) {
             const sqlOld = `
                 SELECT f.forma_pago AS metodo, SUM(f.total) AS total
                 FROM facturas f
-                JOIN clientes c ON f.cliente_id = c.id
+                LEFT JOIN clientes c ON f.cliente_id = c.id
                 ${whereSql}
                 GROUP BY f.forma_pago
             `;
@@ -115,7 +115,7 @@ async function getProductosMasVendidos(queryParams) {
                SUM(df.subtotal) AS total_ingresos
         FROM detalle_factura df
         JOIN facturas  f ON f.id = df.factura_id
-        JOIN clientes  c ON f.cliente_id = c.id
+        LEFT JOIN clientes  c ON f.cliente_id = c.id
         JOIN productos p ON p.id = df.producto_id
         ${whereSql}
         GROUP BY p.id, p.nombre
@@ -139,7 +139,7 @@ async function getDiasMasMovimiento(queryParams) {
                COUNT(*)            AS num_ventas,
                SUM(f.total)        AS total_ventas
         FROM facturas f
-        JOIN clientes c ON f.cliente_id = c.id
+        LEFT JOIN clientes c ON f.cliente_id = c.id
         ${whereSql}
         GROUP BY DAYOFWEEK(f.fecha)
         ORDER BY dia_num
@@ -161,7 +161,7 @@ async function getHorasPico(queryParams) {
                COUNT(*)       AS num_ventas,
                SUM(f.total)   AS total_ventas
         FROM facturas f
-        JOIN clientes c ON f.cliente_id = c.id
+        LEFT JOIN clientes c ON f.cliente_id = c.id
         ${whereSql}
         GROUP BY HOUR(f.fecha)
         ORDER BY hora
@@ -183,7 +183,7 @@ async function getKPIs(queryParams) {
                AVG(f.total) AS ticket_promedio,
                MAX(f.total) AS venta_maxima
         FROM facturas f
-        JOIN clientes c ON f.cliente_id = c.id
+        LEFT JOIN clientes c ON f.cliente_id = c.id
         ${whereSql}
     `;
     try {
@@ -204,7 +204,7 @@ router.get('/', async (req, res) => {
         const query = `
             SELECT f.*, c.nombre as cliente_nombre
             FROM facturas f
-            JOIN clientes c ON f.cliente_id = c.id
+            LEFT JOIN clientes c ON f.cliente_id = c.id
             ${whereSql}
             ORDER BY f.fecha DESC
         `;
@@ -316,7 +316,7 @@ router.get('/export', async (req, res) => {
                    p.nombre AS producto,
                    df.cantidad, df.precio_unitario, df.subtotal AS subtotal_item, df.unidad_medida
             FROM facturas f
-            JOIN clientes c ON f.cliente_id = c.id
+            LEFT JOIN clientes c ON f.cliente_id = c.id
             LEFT JOIN detalle_factura df ON df.factura_id = f.id
             LEFT JOIN productos p ON p.id = df.producto_id
             ${whereSql}
@@ -335,7 +335,7 @@ router.get('/export', async (req, res) => {
                 SELECT fp.metodo, COUNT(DISTINCT fp.factura_id) AS num
                 FROM factura_pagos fp
                 JOIN facturas f ON f.id = fp.factura_id
-                JOIN clientes c ON f.cliente_id = c.id
+                LEFT JOIN clientes c ON f.cliente_id = c.id
                 ${whereSql}
                 WHERE fp.metodo IN ('efectivo','transferencia','tarjeta','qr')
                 GROUP BY fp.metodo

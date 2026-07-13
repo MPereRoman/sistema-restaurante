@@ -117,7 +117,7 @@ async function imprimirTextoServidor(texto, impresoraNombre, copias, anchoPapelM
     }
 }
 
-function buildFacturaTexto({ factura, cliente, detalles, pagos, negocio }) {
+function buildFacturaTexto({ factura, detalles, pagos, negocio }) {
     const line = '-'.repeat(42);
     const out = [];
     out.push(String(negocio?.nombre_negocio || 'FACTURA'));
@@ -127,7 +127,6 @@ function buildFacturaTexto({ factura, cliente, detalles, pagos, negocio }) {
     out.push(line);
     out.push(`Factura #: ${factura?.id ?? '-'}`);
     out.push(`Fecha: ${new Date(factura?.fecha || Date.now()).toLocaleString('es-CO')}`);
-    out.push(`Cliente: ${cliente?.nombre || '-'}`);
     out.push(line);
     (detalles || []).forEach((d) => {
         out.push(String(d?.producto_nombre || ''));
@@ -155,7 +154,7 @@ router.post('/', async (req, res) => {
     
     console.log('Datos recibidos:', req.body);
     
-    if (!cliente_id || !productos || productos.length === 0) {
+    if (!productos || productos.length === 0) {
         return res.status(400).json({ error: 'Datos incompletos' });
     }
 
@@ -192,7 +191,7 @@ router.post('/', async (req, res) => {
             // Insertar factura
             const [result] = await connection.query(
                 'INSERT INTO facturas (cliente_id, total, forma_pago) VALUES (?, ?, ?)',
-                [cliente_id, totalNum, formaPagoDB]
+                [cliente_id || null, totalNum, formaPagoDB]
             );
 
             const factura_id = result.insertId;
@@ -287,7 +286,7 @@ router.get('/:id/imprimir', async (req, res) => {
         const [facturas] = await db.query(
             `SELECT f.*, c.nombre as cliente_nombre, c.direccion, c.telefono
              FROM facturas f
-             JOIN clientes c ON f.cliente_id = c.id
+             LEFT JOIN clientes c ON f.cliente_id = c.id
              WHERE f.id = ?`,
             [factura_id]
         );
@@ -346,7 +345,7 @@ router.get('/:id/detalles', async (req, res) => {
         // Obtener información de la factura
         const [facturas] = await db.query(
             'SELECT f.*, c.nombre as cliente_nombre, c.direccion, c.telefono FROM facturas f ' +
-            'JOIN clientes c ON f.cliente_id = c.id ' +
+            'LEFT JOIN clientes c ON f.cliente_id = c.id ' +
             'WHERE f.id = ?',
             [req.params.id]
         );
@@ -450,7 +449,7 @@ router.post('/:id/imprimir-servidor', async (req, res) => {
         const [facturas] = await db.query(
             `SELECT f.*, c.nombre as cliente_nombre, c.direccion, c.telefono
              FROM facturas f
-             JOIN clientes c ON f.cliente_id = c.id
+             LEFT JOIN clientes c ON f.cliente_id = c.id
              WHERE f.id = ?`,
             [facturaId]
         );
@@ -478,7 +477,6 @@ router.post('/:id/imprimir-servidor', async (req, res) => {
 
         const texto = buildFacturaTexto({
             factura,
-            cliente: { nombre: factura.cliente_nombre, direccion: factura.direccion, telefono: factura.telefono },
             detalles: detalles || [],
             pagos,
             negocio: config || {}

@@ -1113,7 +1113,6 @@ router.put('/items/:itemId/estado', async (req, res) => {
 router.post('/pedidos/:pedidoId/facturar', async (req, res) => {
     const pedidoId = req.params.pedidoId;
     const { cliente_id, forma_pago, pagos } = req.body || {};
-    if (!cliente_id) return res.status(400).json({ error: 'cliente_id requerido para facturar' });
     // forma_pago se mantiene por compatibilidad, pero lo recomendado es enviar pagos[] (pago mixto)
     try {
         const connection = await db.getConnection();
@@ -1164,7 +1163,7 @@ router.post('/pedidos/:pedidoId/facturar', async (req, res) => {
 
             const [facturaInsert] = await connection.query(
                 `INSERT INTO facturas (cliente_id, total, forma_pago) VALUES (?, ?, ?)`,
-                [cliente_id, total, formaPagoDB]
+                [cliente_id || null, total, formaPagoDB]
             );
             const facturaId = facturaInsert.insertId;
 

@@ -499,15 +499,6 @@ $(document).ready(function() {
     // Guardar pedido
     $('#guardarPedido').click(function() {
         console.log('=== INICIO GUARDADO DE PEDIDO ===');
-        const cliente_id = $('#cliente_id').val();
-        const cliente_nombre = $('#cliente').val();
-        
-        if (!cliente_id) {
-            console.log('Error: No hay cliente seleccionado');
-            mostrarAlerta('warning', 'Por favor seleccione un cliente');
-            return;
-        }
-
         if (productosFactura.length === 0) {
             console.log('Error: No hay productos en el pedido');
             mostrarAlerta('warning', 'Agregue al menos un producto al pedido');
@@ -516,10 +507,6 @@ $(document).ready(function() {
 
         const pedido = {
             id: Date.now(),
-            cliente_id: cliente_id,
-            cliente_nombre: cliente_nombre,
-            direccion: $('#direccionCliente').text(),
-            telefono: $('#telefonoCliente').text(),
             productos: JSON.parse(JSON.stringify(productosFactura)),
             total: totalFactura,
             forma_pago: $('#formaPago').val(),
@@ -600,13 +587,7 @@ $(document).ready(function() {
     // Generar factura
     $('#generarFactura').click(function() {
         console.log('=== INICIO GENERACIÓN DE FACTURA ===');
-        const cliente_id = $('#cliente_id').val();
         const forma_pago = $('#formaPago').val();
-        
-        if (!cliente_id) {
-            mostrarAlerta('warning', 'Por favor seleccione un cliente');
-            return;
-        }
 
         if (productosFactura.length === 0) {
             mostrarAlerta('warning', 'Agregue al menos un producto a la factura');
@@ -617,7 +598,6 @@ $(document).ready(function() {
         // (para efectivo/transferencia/tarjeta simple, no mostramos modal y enviamos forma_pago como antes)
         const enviarFactura = (pagosSeleccionados) => {
             const factura = {
-            cliente_id: cliente_id,
             total: totalFactura,
             forma_pago: forma_pago,
             // pagos[] solo se envía si es mixto (o si el usuario lo definió)
@@ -760,11 +740,7 @@ $(document).ready(function() {
             tbody.append(`
                 <tr>
                     <td>
-                        <strong>${pedido.cliente_nombre}</strong><br>
-                        <small class="text-muted">
-                            ${pedido.telefono}<br>
-                                ${pedido.direccion}
-                        </small>
+                        ${pedido.fecha || 'Sin fecha'}
                     </td>
                     <td><small>${productosResumen}</small></td>
                     <td>$${pedido.total.toLocaleString('es-CO')}</td>
