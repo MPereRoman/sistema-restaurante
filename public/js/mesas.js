@@ -381,8 +381,38 @@ $(function() {
     if(!resp.ok) throw new Error(data.error||'Error al cargar pedido');
     pedidoActual = data.pedido || pedidoActual;
     items = data.items || [];
+    const cuentaGenerada = !!String(pedidoActual?.pagos_borrador || '').trim();
+    $('#btnLiberarMesaHeader').prop('disabled', !cuentaGenerada).attr('title', cuentaGenerada ? 'Confirmar pago y liberar mesa' : 'Primero genera la cuenta');
     renderItems();
   }
+
+  $('#btnEditarPersonas').on('click', async function(){
+    if(!pedidoActual?.id) return;
+    const actual = Math.max(1, Number(pedidoActual.numero_personas || 1));
+    const result = await runWithOffcanvasHidden(() => Swal.fire({
+      title: 'Número de personas',
+      input: 'number',
+      inputValue: actual,
+      inputAttributes: { min:'1', max:'100', step:'1' },
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      inputValidator: value => {
+        const n = Number(value);
+        return (!Number.isInteger(n) || n < 1 || n > 100) ? 'Ingresa un número entre 1 y 100' : undefined;
+      }
+    }));
+    if(!result.isConfirmed) return;
+    try{
+      const resp = await fetch(`/api/mesas/pedidos/${pedidoActual.id}/personas`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ numero_personas: Number(result.value) })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if(!resp.ok) throw new Error(data.error || 'No se pudo actualizar');
+      pedidoActual.numero_personas = data.numero_personas;
+      renderItems();
+    }catch(err){ Swal.fire({icon:'error', title: err.message}); }
+  });
 
   // Buscar productos
   let to;
@@ -965,6 +995,15 @@ $(function() {
       mesas.forEach(m => {
         const card = document.querySelector(`.mesa-card[data-mesa-id="${m.id}"]`);
         if (!card) return;
+        card.dataset.mesaPedidosAbiertos = String(m.pedidos_abiertos || 0);
+        card.dataset.pedidoAbiertoId = String(m.pedido_abierto_id || '');
+        card.dataset.cuentaGenerada = String(Number(m.cuenta_generada || 0));
+        const liberar = card.querySelector('.btnLiberarMesa');
+        if(liberar){
+          const habilitado = Number(m.cuenta_generada || 0) === 1;
+          liberar.disabled = !habilitado;
+          liberar.title = habilitado ? 'Confirmar pago y liberar mesa' : 'Primero genera la cuenta';
+        }
         const badge = card.querySelector('.estado-badge');
         if (badge) {
           badge.textContent = m.estado;
@@ -1338,35 +1377,34 @@ $(function() {
     abrirPedido(mesaId, titulo);
   });
 
-  // Liberar mesa desde tarjeta
+  async function confirmarPagoYLiberar(pedidoId, mesaNum){
+    if(!pedidoId) return Swal.fire({ icon:'info', title:'Primero genera la cuenta' });
+    const ok = await Swal.fire({
+      title:`Confirmar pago de mesa ${mesaNum}?`,
+      text:'Se registrará la venta y la mesa quedará libre.',
+      icon:'warning', showCancelButton:true,
+      confirmButtonText:'Sí, confirmar pago', cancelButtonText:'Cancelar'
+    });
+    if(!ok.isConfirmed) return;
+    try{
+      const r = await fetch(`/api/mesas/pedidos/${encodeURIComponent(pedidoId)}/pagado?json=1`, { method:'POST', headers:{'Accept':'application/json'} });
+      const data = await r.json().catch(() => ({}));
+      if(!r.ok) throw new Error(data.error || 'No se pudo confirmar el pago');
+      await Swal.fire({ icon:'success', title:'Pago confirmado', text:'La mesa quedó liberada.' });
+      location.reload();
+    }catch(err){ Swal.fire({ icon:'error', title: err.message }); }
+  }
+
+  // Confirmar pago y liberar desde tarjeta.
   $('#gridMesas').on('click', '.btnLiberarMesa', async function(){
     const card = $(this).closest('.card');
-    const mesaId = card.data('mesa-id');
     const mesaNum = card.find('.card-title').text().replace('Mesa ', '');
-    const ok = await Swal.fire({ title:`Liberar mesa ${mesaNum}?`, text:'Solo si no tiene items activos', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, liberar' });
-    if(!ok.isConfirmed) return;
-    try{
-      const r = await fetch(`/api/mesas/${mesaId}/liberar`, { method:'PUT' });
-      const data = await r.json();
-      if(!r.ok) throw new Error(data.error||'No se pudo liberar');
-      Swal.fire({ icon:'success', title:'Mesa liberada' }).then(()=> location.reload());
-    }catch(err){
-      Swal.fire({ icon:'error', title: err.message });
-    }
+    await confirmarPagoYLiberar(card[0]?.dataset?.pedidoAbiertoId, mesaNum);
   });
 
-  // Liberar desde header del offcanvas
+  // Confirmar pago y liberar desde header del offcanvas.
   $('#btnLiberarMesaHeader').on('click', async function(){
-    const ok = await Swal.fire({ title:`Liberar mesa ${$('#pedidoMesa').text()}?`, text:'Solo si no tiene items activos', icon:'warning', showCancelButton:true, confirmButtonText:'Sí, liberar' });
-    if(!ok.isConfirmed) return;
-    try{
-      const r = await fetch(`/api/mesas/${pedidoActual.mesa_id}/liberar`, { method:'PUT' });
-      const data = await r.json();
-      if(!r.ok) throw new Error(data.error||'No se pudo liberar');
-      Swal.fire({ icon:'success', title:'Mesa liberada' }).then(()=> location.reload());
-    }catch(err){
-      Swal.fire({ icon:'error', title: err.message });
-    }
+    await runWithOffcanvasHidden(() => confirmarPagoYLiberar(pedidoActual?.id, $('#pedidoMesa').text()));
   });
 
   // Limpiar items rechazados/cancelados del pedido actual
@@ -1403,14 +1441,6 @@ $(function() {
     }
   });
 
-  // Ver pedido: reutiliza abrirPedido (recupera si existe, o crea si no)
-  $('#gridMesas').on('click', '.btnVerPedido', function(){
-    const card = $(this).closest('.card');
-    const mesaId = card.data('mesa-id');
-    const titulo = card.find('.card-title').text().replace('Mesa ','');
-    abrirPedido(mesaId, titulo);
-  });
-
   // Crear nueva mesa (rápida)
   $('#btnNuevaMesa').on('click', async function(){
     const { value: numero } = await Swal.fire({ title:'Número de mesa', input:'text', showCancelButton:true });
@@ -1428,6 +1458,28 @@ $(function() {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  async function eliminarMesa(card){
+    if(!card) return;
+    const mesaId = card.getAttribute('data-mesa-id');
+    const numero = card.dataset.mesaNumero || card.querySelector('.card-title')?.textContent?.replace('Mesa ','') || '';
+    const confirmacion = await Swal.fire({
+      title: `¿Eliminar mesa ${numero}?`,
+      text: 'La mesa desaparecerá del panel, pero sus pedidos históricos se conservarán.',
+      icon: 'warning', showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar'
+    });
+    if(!confirmacion.isConfirmed) return;
+    try{
+      const resp = await fetch(`/api/mesas/${mesaId}`, { method:'DELETE', headers:{ 'Accept':'application/json' } });
+      const contentType = resp.headers.get('content-type') || '';
+      const data = contentType.includes('application/json') ? await resp.json() : { error: await resp.text() };
+      if(!resp.ok) throw new Error(data.error || 'Error al eliminar mesa');
+      const wrapper = $(card).closest('.col-6');
+      if(wrapper.length) wrapper.remove(); else $(card).remove();
+      Swal.fire({ icon:'success', title:'Mesa eliminada' });
+    }catch(err){ Swal.fire({ icon:'error', title: err.message || 'No se pudo eliminar la mesa' }); }
   }
 
   // Editar mesa
@@ -1459,7 +1511,10 @@ $(function() {
         </div>
       `,
       showCancelButton: true,
+      showDenyButton: !String(card.dataset.pedidoAbiertoId || '').trim(),
       confirmButtonText: 'Guardar',
+      denyButtonText: 'Eliminar mesa',
+      denyButtonColor: '#dc3545',
       didOpen: () => {
         const sel = document.getElementById('editMesaEstado');
         if(sel) sel.value = estadoActual;
@@ -1483,6 +1538,10 @@ $(function() {
       }
     });
 
+    if(result.isDenied){
+      await eliminarMesa(card);
+      return;
+    }
     if(!result.isConfirmed) return;
     try{
       const resp = await fetch(`/api/mesas/${mesaId}`, {
@@ -1517,42 +1576,6 @@ $(function() {
     }
   });
 
-  // Eliminar mesa
-  $('#gridMesas').on('click', '.btnEliminarMesa', async function(e){
-    e.preventDefault();
-    const btn = this;
-    if(btn.hasAttribute('disabled')) return;
-    const card = $(btn).closest('.card')[0];
-    if(!card) return;
-    const mesaId = card.getAttribute('data-mesa-id');
-    const numero = card.dataset.mesaNumero || card.querySelector('.card-title')?.textContent?.replace('Mesa ','') || '';
-
-    const confirmacion = await Swal.fire({
-      title: `¿Eliminar mesa ${numero}?`,
-      text: 'La mesa desaparecerá del panel, pero sus pedidos históricos se conservarán.',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Sí, eliminar',
-      cancelButtonText: 'Cancelar'
-    });
-    if(!confirmacion.isConfirmed) return;
-
-    try{
-      const resp = await fetch(`/api/mesas/${mesaId}`, { method:'DELETE', headers:{ 'Accept':'application/json' } });
-      const contentType = resp.headers.get('content-type') || '';
-      const data = contentType.includes('application/json') ? await resp.json() : { error: await resp.text() };
-      if(!resp.ok) throw new Error(data.error || 'Error al eliminar mesa');
-
-      // Quitar tarjeta del grid
-      const wrapper = $(card).closest('.col-6');
-      if(wrapper.length) wrapper.remove();
-      else $(card).remove();
-
-      Swal.fire({ icon:'success', title:'Mesa eliminada' });
-    }catch(err){
-      Swal.fire({ icon:'error', title: err.message || 'No se pudo eliminar la mesa' });
-    }
-  });
 });
 
 

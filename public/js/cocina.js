@@ -100,20 +100,21 @@ $(function(){
     render();
   }
 
-  async function confirmarCancelarItem(it){
+  async function confirmarCancelarItem(it, rechazar = false){
     // Confirmación (usa SweetAlert2 si está disponible; si no, usa confirm nativo)
     // Relacionado con: views/cocina.ejs (incluye vendor/sweetalert2 en algunos entornos)
     const producto = String(it?.producto_nombre || '').trim() || 'este item';
     const mesa = String(it?.mesa_numero || '').trim();
-    const texto = `¿Cancelar ${producto}${mesa ? ` (Mesa ${mesa})` : ''}?`;
+    const verbo = rechazar ? 'Rechazar' : 'Cancelar';
+    const texto = `¿${verbo} ${producto}${mesa ? ` (Mesa ${mesa})` : ''}?`;
 
     if (window.Swal && typeof window.Swal.fire === 'function') {
       const r = await window.Swal.fire({
-        title: 'Cancelar pedido',
+        title: `${verbo} pedido`,
         text: texto,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'Sí, cancelar',
+        confirmButtonText: `Sí, ${verbo.toLowerCase()}`,
         cancelButtonText: 'No'
       });
       return !!r.isConfirmed;
@@ -213,7 +214,10 @@ $(function(){
             <div class="fw-semibold">${producto}</div>
             ${nota ? `<div class="cocina-note mt-1"><i class="bi bi-exclamation-triangle me-1"></i>${escapeHtml(nota)}</div>` : ''}
           </div>
-          <span class="badge text-bg-secondary">x${qty}</span>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge text-bg-secondary">x${qty}</span>
+            ${canKitchenActions ? `<button class="btn btn-sm btn-outline-danger" data-action="rechazar" data-id="${it.id}"><i class="bi bi-x-octagon me-1"></i>Rechazar</button>` : ''}
+          </div>
         </div>`;
     }).join('');
 
@@ -484,18 +488,19 @@ $(function(){
     await aplicarFiltrosHistorico();
   });
 
-  $(document).on('click','[data-action="cancelar"]', async function(){
+  $(document).on('click','[data-action="cancelar"], [data-action="rechazar"]', async function(){
     const id = String(this.dataset.id || '').trim();
     if(!id) return;
     const it = (allItems || []).find(x => String(x.id) === id) || null;
-    const ok = await confirmarCancelarItem(it || {});
+    const esRechazo = String(this.dataset.action || '') === 'rechazar';
+    const ok = await confirmarCancelarItem(it || {}, esRechazo);
     if(!ok) return;
 
     const resp = await fetch(`/api/cocina/item/${encodeURIComponent(id)}/rechazar`, { method:'PUT', headers:{'Content-Type':'application/json'} });
     const data = await resp.json().catch(() => ({}));
     if(!resp.ok){
       if (window.Swal && typeof window.Swal.fire === 'function') {
-        await window.Swal.fire({ icon:'error', title: 'No se pudo cancelar', text: String(data?.error || 'Error') });
+        await window.Swal.fire({ icon:'error', title: esRechazo ? 'No se pudo rechazar' : 'No se pudo cancelar', text: String(data?.error || 'Error') });
       } else {
         alert(String(data?.error || 'No se pudo cancelar'));
       }

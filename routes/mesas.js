@@ -53,6 +53,13 @@ async function getMesaIdByItem(connection, itemId) {
     return rows[0].mesa_id;
 }
 
+function getMeseroNombre(sessionUser) {
+    const nombre = String(sessionUser?.nombre || '').trim();
+    const usuario = String(sessionUser?.usuario || '').trim();
+    if (!nombre || ['administrador', 'admin'].includes(nombre.toLowerCase())) return usuario || nombre || null;
+    return nombre;
+}
+
 // Configuración operativa de Cocina:
 // - auto_listo_comanda: al enviar desde Mesas el item pasa directo a "listo".
 // - imprime_servidor: la comanda se imprime en el servidor (no en el navegador del celular).
@@ -214,6 +221,19 @@ router.get('/', async (req, res) => {
                   AND p2.estado NOT IN ('cerrado','cancelado','rechazado')
                   AND i.estado NOT IN ('cancelado','rechazado')
             ) AS items_activos,
+            (
+                SELECT p4.id FROM pedidos p4
+                WHERE p4.mesa_id = m.id
+                  AND p4.estado NOT IN ('cerrado','cancelado','rechazado')
+                ORDER BY p4.id DESC LIMIT 1
+            ) AS pedido_abierto_id,
+            EXISTS(
+                SELECT 1 FROM pedidos p5
+                WHERE p5.mesa_id = m.id
+                  AND p5.estado NOT IN ('cerrado','cancelado','rechazado')
+                  AND p5.pagos_borrador IS NOT NULL
+                  AND p5.pagos_borrador <> ''
+            ) AS cuenta_generada,
             CASE
                 WHEN m.estado IN ('reservada','bloqueada') THEN m.estado
                 WHEN (
@@ -263,6 +283,19 @@ router.get('/listar', async (req, res) => {
                   AND p2.estado NOT IN ('cerrado','cancelado','rechazado')
                   AND i.estado NOT IN ('cancelado','rechazado')
             ) AS items_activos,
+            (
+                SELECT p4.id FROM pedidos p4
+                WHERE p4.mesa_id = m.id
+                  AND p4.estado NOT IN ('cerrado','cancelado','rechazado')
+                ORDER BY p4.id DESC LIMIT 1
+            ) AS pedido_abierto_id,
+            EXISTS(
+                SELECT 1 FROM pedidos p5
+                WHERE p5.mesa_id = m.id
+                  AND p5.estado NOT IN ('cerrado','cancelado','rechazado')
+                  AND p5.pagos_borrador IS NOT NULL
+                  AND p5.pagos_borrador <> ''
+            ) AS cuenta_generada,
             CASE
                 WHEN m.estado IN ('reservada','bloqueada') THEN m.estado
                 WHEN (
@@ -424,7 +457,7 @@ router.delete('/:mesaId', async (req, res) => {
 router.post('/abrir', async (req, res) => {
     const { mesa_id, cliente_id, notas, numero_personas } = req.body || {};
     if (!mesa_id) return res.status(400).json({ error: 'mesa_id requerido' });
-    const meseroNombre = String(req.session?.user?.nombre || req.session?.user?.usuario || '').trim() || null;
+    const meseroNombre = getMeseroNombre(req.session?.user);
     try {
         const connection = await db.getConnection();
         try {
@@ -437,7 +470,8 @@ router.post('/abrir', async (req, res) => {
             );
             if (existentes.length > 0) {
                 // Si el pedido abierto aún no tiene mesero asignado, lo completamos con el usuario en sesión.
-                if (!String(existentes[0]?.mesero_nombre || '').trim() && meseroNombre) {
+                const meseroActual = String(existentes[0]?.mesero_nombre || '').trim();
+                if ((!meseroActual || ['administrador', 'admin'].includes(meseroActual.toLowerCase())) && meseroNombre) {
                     await connection.query(
                         `UPDATE pedidos SET mesero_nombre = ? WHERE id = ?`,
                         [meseroNombre, existentes[0].id]
@@ -523,12 +557,29 @@ router.get('/pedidos/:pedidoId', async (req, res) => {
     }
 });
 
+// Permite corregir el numero de comensales mientras el pedido siga abierto.
+router.put('/pedidos/:pedidoId/personas', async (req, res) => {
+    try {
+        const pedidoId = req.params.pedidoId;
+        const personas = Number(req.body?.numero_personas);
+        if (!Number.isInteger(personas) || personas < 1 || personas > 100) {
+            return res.status(422).json({ error: 'Ingresa un numero de personas entre 1 y 100' });
+        }
+        const [result] = await db.query(
+            `UPDATE pedidos SET numero_personas = ?
+             WHERE id = ? AND estado NOT IN ('cerrado','cancelado','rechazado')`,
+            [personas, pedidoId]
+        );
+        if (!result.affectedRows) return res.status(409).json({ error: 'El pedido ya no esta abierto' });
+        res.json({ numero_personas: personas });
+    } catch (error) {
+        console.error('Error al actualizar personas:', error);
+        res.status(500).json({ error: 'No se pudo actualizar el numero de personas' });
+    }
+});
+
 // GET /mesas/pedidos/:pedidoId/comanda - Vista de comanda para impresión rápida
-// Query params opcionales:
-// - item_ids=1,2,3 -> imprime solo esos items
-// - auto_print=1 -> dispara window.print al cargar
-// Relacionado con:
-// - public/js/mesas.js (enviar a cocina)
+// Query params opcionales: item_ids=1,2,3 y auto_print=1.
 router.get('/pedidos/:pedidoId/comanda', async (req, res) => {
     try {
         const pedidoId = Number(req.params.pedidoId);
@@ -853,7 +904,7 @@ router.delete('/items/:itemId', async (req, res) => {
 router.put('/items/:itemId/enviar', async (req, res) => {
     try {
         const itemId = req.params.itemId;
-        const meseroNombre = String(req.session?.user?.nombre || req.session?.user?.usuario || '').trim() || null;
+        const meseroNombre = getMeseroNombre(req.session?.user);
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
@@ -1234,10 +1285,12 @@ router.post('/pedidos/:pedidoId/pagado', async (req, res) => {
         await connection.query(`UPDATE pedidos SET estado = 'cerrado', total = ?, pagos_borrador = NULL WHERE id = ?`, [total, pedidoId]);
         await connection.query(`UPDATE mesas SET estado = 'libre' WHERE id = ?`, [pedido.mesa_id]);
         await connection.commit();
+        if (req.query.json === '1') return res.json({ message: 'Pago confirmado y mesa liberada', factura_id: facturaId });
         res.redirect('/mesas?venta=pagada');
     } catch (error) {
         await connection.rollback();
         console.error('Error al confirmar pago:', error);
+        if (req.query.json === '1') return res.status(400).json({ error: String(error.message || 'No se pudo confirmar el pago') });
         res.status(400).send(`<h2>No se pudo confirmar el pago</h2><p>${String(error.message || 'Error')}</p><p><a href="/mesas">Volver a mesas</a></p>`);
     } finally {
         connection.release();

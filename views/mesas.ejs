@@ -61,6 +61,8 @@
                         data-mesa-descripcion="<%= m.descripcion || '' %>"
                         data-mesa-estado="<%= m.estado %>"
                         data-mesa-pedidos-abiertos="<%= m.pedidos_abiertos || 0 %>"
+                        data-pedido-abierto-id="<%= m.pedido_abierto_id || '' %>"
+                        data-cuenta-generada="<%= Number(m.cuenta_generada || 0) %>"
                     >
                         <div class="card-body">
                             <span class="badge rounded-pill bg-<%= m.estado === 'libre' ? 'success' : (m.estado === 'ocupada' ? 'warning' : 'secondary') %> estado-badge">
@@ -69,28 +71,15 @@
                             <h5 class="card-title mb-1">Mesa <%= m.numero %></h5>
                             <p class="text-muted small mb-3"><%= m.descripcion || '' %></p>
                             <div class="d-grid gap-2">
-                                <button class="btn btn-outline-secondary btn-sm btnLiberarMesa">
+                                <button class="btn btn-outline-success btn-sm btnLiberarMesa" <%= Number(m.cuenta_generada || 0) !== 1 ? 'disabled' : '' %> title="<%= Number(m.cuenta_generada || 0) === 1 ? 'Confirmar pago y liberar mesa' : 'Primero genera la cuenta' %>">
                                     <i class="bi bi-unlock me-1"></i> Liberar mesa
                                 </button>
                                 <button class="btn btn-outline-primary btn-sm btnAbrirPedido">
                                     <i class="bi bi-door-open me-1"></i> Abrir / Continuar pedido
                                 </button>
-                                <button class="btn btn-outline-secondary btn-sm btnVerPedido">
-                                    <i class="bi bi-list-ul me-1"></i> Ver pedido
+                                <button class="btn btn-outline-dark btnEditarMesa py-2">
+                                    <i class="bi bi-pencil-square me-1"></i> Editar
                                 </button>
-                                <div class="btn-group" role="group" aria-label="Acciones mesa">
-                                    <button class="btn btn-outline-dark btn-sm btnEditarMesa">
-                                        <i class="bi bi-pencil-square me-1"></i> Editar
-                                    </button>
-                                    <button
-                                        class="btn btn-outline-danger btn-sm btnEliminarMesa"
-                                        <%= (m.pedidos_abiertos || 0) > 0 ? 'disabled' : '' %>
-                                        data-bs-toggle="tooltip"
-                                        title="<%= (m.pedidos_abiertos || 0) > 0 ? 'No se puede eliminar: tiene pedido activo' : 'Eliminar mesa' %>"
-                                    >
-                                        <i class="bi bi-trash me-1"></i> Eliminar
-                                    </button>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -112,7 +101,9 @@
         </div>
         <div class="offcanvas-body d-flex flex-column">
             <div class="alert alert-light border py-2 mb-2 d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-people me-1"></i>Personas: <strong id="pedidoPersonas">1</strong></span>
+                <span><i class="bi bi-people me-1"></i>Personas: <strong id="pedidoPersonas">1</strong>
+                    <button id="btnEditarPersonas" type="button" class="btn btn-link btn-sm p-0 ms-1" title="Editar número de personas"><i class="bi bi-pencil-square"></i></button>
+                </span>
                 <span class="text-end">Promedio: <strong id="promedioPersona">$0</strong></span>
             </div>
             <div class="mb-2">
@@ -126,7 +117,7 @@
                 <button id="btnLimpiarRechazadosHeader" class="btn btn-outline-danger btn-sm me-2">
                     <i class="bi bi-eraser"></i> Limpiar rechazados
                 </button>
-                <button id="btnLiberarMesaHeader" class="btn btn-outline-secondary btn-sm"><i class="bi bi-unlock"></i> Liberar mesa</button>
+                <button id="btnLiberarMesaHeader" class="btn btn-outline-success btn-sm" disabled title="Primero genera la cuenta"><i class="bi bi-unlock"></i> Liberar mesa</button>
             </div>
             <div class="table-responsive flex-grow-1">
                 <table class="table table-sm">

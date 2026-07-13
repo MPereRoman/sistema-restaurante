@@ -124,11 +124,6 @@
 <body>
     <div class="no-print" style="text-align: center; margin-bottom: 20px;">
         <button onclick="window.print()" class="print-button"><%= (typeof es_cuenta !== 'undefined' && es_cuenta) ? 'Imprimir cuenta' : 'Imprimir factura' %></button>
-        <% if (typeof es_cuenta !== 'undefined' && es_cuenta) { %>
-            <form method="POST" action="/api/mesas/pedidos/<%= pedido_id %>/pagado" style="display:inline;" onsubmit="return confirm('¿Confirmas que el pago fue recibido? Esta acción registrará la venta y liberará la mesa.');">
-                <button type="submit" class="print-button" style="background:#198754;" <%= cuenta_desactualizada ? 'disabled' : '' %>>Marcar como pagado</button>
-            </form>
-        <% } %>
         <!-- Botón Volver: solo se muestra en pantalla completa (no en iframe/modal) -->
         <!-- Relacionado con: routes/facturas.js (embed=1 cuando se abre desde index/ventas) -->
         <% if (!(typeof embed !== 'undefined' && embed)) { %>

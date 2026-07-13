@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', function () {
     qs('usuarioRol').value = 'mesero';
     qs('usuarioActivo').checked = true;
     qs('usuarioPassword').value = '';
+    qs('wrapPassword')?.classList.remove('d-none');
     showError('usuarioError', '');
     usuarioModal?.show();
     setTimeout(() => qs('usuarioUsuario')?.focus(), 250);
@@ -91,7 +92,8 @@ document.addEventListener('DOMContentLoaded', function () {
     qs('usuarioNombre').value = nombre;
     qs('usuarioRol').value = rol;
     qs('usuarioActivo').checked = !!activo;
-    qs('usuarioPassword').value = ''; // opcional
+    qs('usuarioPassword').value = '';
+    qs('wrapPassword')?.classList.add('d-none');
     showError('usuarioError', '');
     usuarioModal?.show();
     setTimeout(() => qs('usuarioUsuario')?.focus(), 250);
@@ -125,14 +127,6 @@ document.addEventListener('DOMContentLoaded', function () {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
-        // Si escribió password aquí, lo actualizamos también
-        if (password && password.trim()) {
-          await fetchJson(`/api/usuarios/${encodeURIComponent(id)}/password`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
-          });
-        }
       }
       usuarioModal?.hide();
       await recargarTabla();
