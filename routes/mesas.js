@@ -1109,8 +1109,144 @@ router.put('/items/:itemId/estado', async (req, res) => {
     }
 });
 
-// POST /mesas/pedidos/:pedidoId/facturar - API: genera factura desde pedido y cierra mesa
+function normalizarPagosCuenta(arr) {
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(p => p && typeof p === 'object').map(p => ({
+        metodo: String(p.metodo || '').toLowerCase().trim(),
+        monto: Number(p.monto || 0),
+        referencia: String(p.referencia || '').trim() || null
+    })).filter(p => ['efectivo', 'transferencia'].includes(p.metodo) && Number.isFinite(p.monto) && p.monto > 0);
+}
+
+function formaPagoDesdePagos(pagos) {
+    return pagos.length === 1 ? pagos[0].metodo : 'mixto';
+}
+
+function firmaItemsCuenta(items) {
+    return (items || []).map(item => [
+        Number(item.id || 0), Number(item.producto_id || 0),
+        Number(item.cantidad || 0), Number(item.subtotal || 0)
+    ]).sort((a, b) => a[0] - b[0]);
+}
+
+// Prepara una cuenta provisional sin registrar la venta ni liberar la mesa.
 router.post('/pedidos/:pedidoId/facturar', async (req, res) => {
+    try {
+        const pedidoId = req.params.pedidoId;
+        const pagos = normalizarPagosCuenta(req.body?.pagos);
+        const [pedidos] = await db.query('SELECT id, estado FROM pedidos WHERE id = ? LIMIT 1', [pedidoId]);
+        if (!pedidos.length) return res.status(404).json({ error: 'Pedido no encontrado' });
+        if (['cerrado', 'cancelado', 'rechazado'].includes(String(pedidos[0].estado || '').toLowerCase())) {
+            return res.status(409).json({ error: 'El pedido ya está cerrado' });
+        }
+        const [items] = await db.query(
+            `SELECT id, producto_id, cantidad, subtotal FROM pedido_items WHERE pedido_id = ? AND estado NOT IN ('cancelado','rechazado')`,
+            [pedidoId]
+        );
+        if (!items.length) return res.status(400).json({ error: 'Pedido sin productos' });
+        const total = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+        const sumaPagos = pagos.reduce((sum, pago) => sum + Number(pago.monto || 0), 0);
+        if (!pagos.length || sumaPagos < total - 0.01) {
+            return res.status(400).json({ error: 'La suma de pagos no cubre el total' });
+        }
+        const borrador = { total, pagos, forma_pago: formaPagoDesdePagos(pagos), items_firma: firmaItemsCuenta(items), actualizado_en: new Date().toISOString() };
+        await db.query('UPDATE pedidos SET pagos_borrador = ? WHERE id = ?', [JSON.stringify(borrador), pedidoId]);
+        res.json({ cuenta_url: `/api/mesas/pedidos/${pedidoId}/cuenta` });
+    } catch (error) {
+        console.error('Error al preparar cuenta:', error);
+        res.status(500).json({ error: 'No se pudo preparar la cuenta' });
+    }
+});
+
+// Vista imprimible de la cuenta provisional.
+router.get('/pedidos/:pedidoId/cuenta', async (req, res) => {
+    try {
+        const pedidoId = req.params.pedidoId;
+        const [pedidos] = await db.query(
+            `SELECT p.*, m.numero AS mesa_numero FROM pedidos p JOIN mesas m ON m.id = p.mesa_id WHERE p.id = ? LIMIT 1`,
+            [pedidoId]
+        );
+        if (!pedidos.length) return res.status(404).send('Pedido no encontrado');
+        const pedido = pedidos[0];
+        let borrador = null;
+        try { borrador = JSON.parse(pedido.pagos_borrador || 'null'); } catch (_) { borrador = null; }
+        if (!borrador?.pagos?.length) return res.status(400).send('Primero genera la cuenta desde la mesa');
+        const [detalles] = await db.query(
+            `SELECT i.*, pr.nombre AS producto_nombre FROM pedido_items i
+             JOIN productos pr ON pr.id = i.producto_id
+             WHERE i.pedido_id = ? AND i.estado NOT IN ('cancelado','rechazado') ORDER BY i.id`,
+            [pedidoId]
+        );
+        const totalActual = detalles.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+        const [configRows] = await db.query('SELECT * FROM configuracion_impresion LIMIT 1');
+        const config = configRows?.[0] || { ancho_papel: 80, font_size: 1 };
+        if (config.logo_data) config.logo_src = `data:image/${config.logo_tipo};base64,${Buffer.from(config.logo_data).toString('base64')}`;
+        if (config.qr_data) config.qr_src = `data:image/${config.qr_tipo};base64,${Buffer.from(config.qr_data).toString('base64')}`;
+        res.render('factura', {
+            factura: { id: `CUENTA · Mesa ${pedido.mesa_numero}`, fecha: new Date(), total: totalActual, forma_pago: borrador.forma_pago },
+            detalles, config, pagos: borrador.pagos, es_cuenta: true, pedido_id: pedidoId,
+            cuenta_desactualizada: Math.abs(Number(borrador.total) - totalActual) >= 0.01 || JSON.stringify(borrador.items_firma || []) !== JSON.stringify(firmaItemsCuenta(detalles)),
+            return_to: '/mesas', embed: false
+        });
+    } catch (error) {
+        console.error('Error al mostrar cuenta:', error);
+        res.status(500).send('No se pudo mostrar la cuenta');
+    }
+});
+
+// Confirmación final: registra la venta y libera la mesa.
+router.post('/pedidos/:pedidoId/pagado', async (req, res) => {
+    const pedidoId = req.params.pedidoId;
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [pedidos] = await connection.query('SELECT * FROM pedidos WHERE id = ? FOR UPDATE', [pedidoId]);
+        if (!pedidos.length) throw new Error('Pedido no encontrado');
+        const pedido = pedidos[0];
+        if (['cerrado', 'cancelado', 'rechazado'].includes(String(pedido.estado || '').toLowerCase())) throw new Error('El pedido ya está cerrado');
+        let borrador = null;
+        try { borrador = JSON.parse(pedido.pagos_borrador || 'null'); } catch (_) { borrador = null; }
+        const pagos = normalizarPagosCuenta(borrador?.pagos);
+        if (!pagos.length) throw new Error('Primero genera la cuenta');
+        const [items] = await connection.query(
+            `SELECT * FROM pedido_items WHERE pedido_id = ? AND estado NOT IN ('cancelado','rechazado')`, [pedidoId]
+        );
+        if (!items.length) throw new Error('Pedido sin productos');
+        const total = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+        if (Math.abs(Number(borrador.total) - total) >= 0.01 || JSON.stringify(borrador.items_firma || []) !== JSON.stringify(firmaItemsCuenta(items))) {
+            throw new Error('El pedido cambió; genera nuevamente la cuenta');
+        }
+        const sumaPagos = pagos.reduce((sum, pago) => sum + Number(pago.monto || 0), 0);
+        if (sumaPagos < total - 0.01) throw new Error('La suma de pagos no cubre el total');
+        const formaPago = formaPagoDesdePagos(pagos);
+        const [facturaInsert] = await connection.query(
+            `INSERT INTO facturas (cliente_id, total, forma_pago) VALUES (NULL, ?, ?)`, [total, formaPago]
+        );
+        const facturaId = facturaInsert.insertId;
+        await connection.query(
+            `INSERT INTO detalle_factura (factura_id, producto_id, cantidad, precio_unitario, unidad_medida, subtotal) VALUES ?`,
+            [items.map(i => [facturaId, i.producto_id, i.cantidad, i.precio_unitario, i.unidad_medida, i.subtotal])]
+        );
+        await connection.query(
+            'INSERT INTO factura_pagos (factura_id, metodo, monto, referencia) VALUES ?',
+            [pagos.map(p => [facturaId, p.metodo, p.monto, p.referencia])]
+        );
+        await connection.query(`UPDATE pedidos SET estado = 'cerrado', total = ?, pagos_borrador = NULL WHERE id = ?`, [total, pedidoId]);
+        await connection.query(`UPDATE mesas SET estado = 'libre' WHERE id = ?`, [pedido.mesa_id]);
+        await connection.commit();
+        res.redirect('/mesas?venta=pagada');
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error al confirmar pago:', error);
+        res.status(400).send(`<h2>No se pudo confirmar el pago</h2><p>${String(error.message || 'Error')}</p><p><a href="/mesas">Volver a mesas</a></p>`);
+    } finally {
+        connection.release();
+    }
+});
+
+// Flujo anterior conservado temporalmente para compatibilidad interna.
+// POST /mesas/pedidos/:pedidoId/facturar-legacy
+router.post('/pedidos/:pedidoId/facturar-legacy', async (req, res) => {
     const pedidoId = req.params.pedidoId;
     const { cliente_id, forma_pago, pagos } = req.body || {};
     // forma_pago se mantiene por compatibilidad, pero lo recomendado es enviar pagos[] (pago mixto)

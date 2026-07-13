@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Factura #<%= factura.id %></title>
+    <title><%= (typeof es_cuenta !== 'undefined' && es_cuenta) ? 'Cuenta provisional' : `Factura #${factura.id}` %></title>
     <style>
         /* ====================================================
            REGLA @page — CRÍTICA para impresoras térmicas.
@@ -123,7 +123,12 @@
 </head>
 <body>
     <div class="no-print" style="text-align: center; margin-bottom: 20px;">
-        <button onclick="window.print()" class="print-button">Imprimir Factura</button>
+        <button onclick="window.print()" class="print-button"><%= (typeof es_cuenta !== 'undefined' && es_cuenta) ? 'Imprimir cuenta' : 'Imprimir factura' %></button>
+        <% if (typeof es_cuenta !== 'undefined' && es_cuenta) { %>
+            <form method="POST" action="/api/mesas/pedidos/<%= pedido_id %>/pagado" style="display:inline;" onsubmit="return confirm('¿Confirmas que el pago fue recibido? Esta acción registrará la venta y liberará la mesa.');">
+                <button type="submit" class="print-button" style="background:#198754;" <%= cuenta_desactualizada ? 'disabled' : '' %>>Marcar como pagado</button>
+            </form>
+        <% } %>
         <!-- Botón Volver: solo se muestra en pantalla completa (no en iframe/modal) -->
         <!-- Relacionado con: routes/facturas.js (embed=1 cuando se abre desde index/ventas) -->
         <% if (!(typeof embed !== 'undefined' && embed)) { %>
@@ -138,6 +143,12 @@
             </div>
         <% } %>
     </div>
+
+    <% if (typeof es_cuenta !== 'undefined' && es_cuenta && cuenta_desactualizada) { %>
+        <div class="no-print" style="max-width:600px;margin:0 auto 15px;padding:12px;background:#fff3cd;border:1px solid #ffe69c;border-radius:5px;">
+            El pedido cambió después de generar la cuenta. Vuelve a la mesa y genera la cuenta nuevamente antes de marcarla como pagada.
+        </div>
+    <% } %>
 
     <div class="factura">
         <% if (config.logo_src) { %>
@@ -160,7 +171,7 @@
         <div class="divider"></div>
 
         <div class="mb-3">
-            <div>Factura #: <%= factura.id %></div>
+            <div><%= (typeof es_cuenta !== 'undefined' && es_cuenta) ? 'Cuenta:' : 'Factura #:' %> <%= factura.id %></div>
             <div>Fecha: <%= new Date(factura.fecha).toLocaleString() %></div>
         </div>
 
@@ -237,7 +248,7 @@
         </div>
     </div>
 
-    <% if (config && Number(config.factura_auto_print || 0) === 1) { %>
+    <% if (!(typeof es_cuenta !== 'undefined' && es_cuenta) && config && Number(config.factura_auto_print || 0) === 1) { %>
     <script>
         window.addEventListener('load', function () {
             try { window.print(); } catch (_) {}

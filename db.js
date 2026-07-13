@@ -27,6 +27,7 @@ async function ensureSchema() {
         // compatible para instalaciones existentes, sin tocar el historial.
         await pool.query(`ALTER TABLE mesas ADD COLUMN IF NOT EXISTS activa TINYINT(1) NOT NULL DEFAULT 1 AFTER estado`);
         await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS numero_personas INT NOT NULL DEFAULT 1 AFTER mesero_nombre`);
+        await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pagos_borrador LONGTEXT NULL AFTER numero_personas`);
 
         // Tabla de pagos por factura (pago mixto) — con soporte para QR
         await pool.query(`

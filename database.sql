@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
     -- Se guarda en snapshot para trazabilidad histórica aunque el usuario cambie luego.
     mesero_nombre VARCHAR(100) NULL,
     numero_personas INT NOT NULL DEFAULT 1,
+    pagos_borrador LONGTEXT NULL,
     -- Estado del pedido (flujo general). "rechazado" se usa cuando el pedido se cancela/rechaza.
     -- Relacionado con:
     -- - routes/mesas.js (liberar mesa -> marca pedido rechazado)
@@ -268,6 +269,9 @@ ALTER TABLE pedidos
 
 ALTER TABLE pedidos
     ADD COLUMN IF NOT EXISTS numero_personas INT NOT NULL DEFAULT 1 AFTER mesero_nombre;
+
+ALTER TABLE pedidos
+    ADD COLUMN IF NOT EXISTS pagos_borrador LONGTEXT NULL AFTER numero_personas;
 
 ALTER TABLE mesas
     ADD COLUMN IF NOT EXISTS activa TINYINT(1) NOT NULL DEFAULT 1 AFTER estado;

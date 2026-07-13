@@ -1004,6 +1004,10 @@ $(function() {
         body: JSON.stringify({ pagos })
       });
       const data = await resp.json();
+      if(!resp.ok) throw new Error(data.error||'Error al generar la cuenta');
+      if (!data.cuenta_url) throw new Error('No se recibió la cuenta provisional');
+      window.location.href = data.cuenta_url;
+      return;
       if(!resp.ok) throw new Error(data.error||'Error al facturar');
       // Si está activo "factura en servidor", no abrimos vista de navegador.
       const cfgResp = await fetch('/api/facturas/config/impresion');
