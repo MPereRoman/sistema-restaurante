@@ -105,8 +105,8 @@ app.get('/', requireAuth, (req, res) => {
     const rol = String(req.session?.user?.rol || '').toLowerCase();
     if (rol === 'cocinero') return res.redirect('/cocina');
     if (rol === 'mesero') return res.redirect('/mesas');
-    // admin
-    res.render('index');
+    // El historial de ventas es la página principal del administrador.
+    return res.redirect('/ventas');
 });
 
 // Usar las rutas

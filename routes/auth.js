@@ -32,7 +32,7 @@ function defaultRedirectForRole(rol) {
   const r = String(rol || '').toLowerCase();
   if (r === 'cocinero') return '/cocina';
   if (r === 'mesero') return '/mesas';
-  return '/';
+  return '/ventas';
 }
 
 // GET /login
