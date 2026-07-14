@@ -200,16 +200,18 @@ router.put('/mesa/:mesaId/preparar', requireRole(['cocinero', 'administrador']),
 // - public/js/cocina.js (botón "Cancelar" en tabs Enviados/Preparando/Listos)
 // - views/cocina.ejs (pestañas)
 // - database.sql (estado pedido_items='rechazado')
-router.put('/item/:id/rechazar', requireRole(['cocinero', 'administrador']), async (req, res) => {
+router.put('/item/:id/rechazar', requireRole(['cocinero', 'mesero', 'administrador']), async (req, res) => {
     try {
         const id = req.params.id;
 
-        // Solo se permite rechazar items aún en cola/preparación
+        const rol = String(req.session?.user?.rol || '').toLowerCase();
+        const estadosPermitidos = rol === 'mesero' ? ['listo'] : ['enviado', 'preparando', 'listo'];
+        // Meseros solo pueden cancelar productos ya listos; cocina conserva el flujo completo.
         const [result] = await db.query(
             `UPDATE pedido_items
              SET estado = 'rechazado'
-             WHERE id = ? AND estado IN ('enviado','preparando','listo')`,
-            [id]
+             WHERE id = ? AND estado IN (?)`,
+            [id, estadosPermitidos]
         );
 
         if ((result?.affectedRows || 0) === 0) {

@@ -1470,6 +1470,33 @@ router.put('/pedidos/:pedidoId/mover', async (req, res) => {
     }
 });
 
+// Marca como entregados todos los productos listos de una mesa.
+router.put('/:mesaId/entregar', async (req, res) => {
+    try {
+        const rol = String(req.session?.user?.rol || '').toLowerCase();
+        if (rol !== 'mesero') return res.status(403).json({ error: 'Solo un mesero puede entregar la mesa' });
+        const mesaId = Number(req.params.mesaId);
+        if (!Number.isInteger(mesaId) || mesaId <= 0) return res.status(400).json({ error: 'Mesa invalida' });
+
+        const [result] = await db.query(
+            `UPDATE pedido_items i
+             JOIN pedidos p ON p.id = i.pedido_id
+             SET i.estado = 'servido', i.servido_at = NOW()
+             WHERE p.mesa_id = ?
+               AND p.estado NOT IN ('cerrado','cancelado','rechazado')
+               AND i.estado = 'listo'`,
+            [mesaId]
+        );
+        if (!Number(result?.affectedRows || 0)) {
+            return res.status(409).json({ error: 'La mesa ya no tiene productos listos para entregar' });
+        }
+        res.json({ message: 'Mesa entregada', actualizados: Number(result.affectedRows) });
+    } catch (error) {
+        console.error('Error al entregar mesa:', error);
+        res.status(500).json({ error: 'No se pudo entregar la mesa' });
+    }
+});
+
 // PUT /mesas/:mesaId/liberar - Libera mesa si no tiene items en pedidos abiertos
 router.put('/:mesaId/liberar', async (req, res) => {
     const mesaId = req.params.mesaId;

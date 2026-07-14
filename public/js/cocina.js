@@ -153,17 +153,18 @@ $(function(){
     const qty = Number(it.cantidad || 0);
 
     // Acciones según rol:
-    // - Mesero: solo "Entregado" cuando está listo
-    // - Cocinero/Admin: preparar + marcar listo + entregado
+    // - Mesero: entregar o cancelar cuando está listo.
+    // - Cocinero/Admin: preparar, marcar listo y cancelar; no entregan.
     const canKitchenActions = (userRole !== 'mesero');
-    // Cancelar desde cocina: solo cocinero/admin, en estados de cola/preparación/listo
+    const estadoActual = String(it.estado || '').toLowerCase();
+    // El mesero solo cancela productos listos; cocina puede cancelar durante todo el proceso.
     // Relacionado con: routes/cocina.js (PUT /api/cocina/item/:id/rechazar)
-    const canCancelar = canKitchenActions && ['enviado','preparando','listo'].includes(String(it.estado || '').toLowerCase());
+    const canCancelar = (canKitchenActions && ['enviado','preparando','listo'].includes(estadoActual)) || (userRole === 'mesero' && estadoActual === 'listo');
     const actions = `
       <div class="d-flex gap-2 flex-wrap justify-content-end mt-2">
         ${canKitchenActions && it.estado==='enviado' ? `<button class="btn btn-sm btn-primary" data-action="prep" data-id="${it.id}"><i class="bi bi-play me-1"></i>Preparar</button>`:''}
         ${canKitchenActions && it.estado==='preparando' ? `<button class="btn btn-sm btn-success" data-action="listo" data-id="${it.id}"><i class="bi bi-check2 me-1"></i>Marcar listo</button>`:''}
-        ${it.estado==='listo' ? `<button class="btn btn-sm btn-outline-dark" data-action="servido" data-id="${it.id}"><i class="bi bi-box-seam me-1"></i>Entregado</button>`:''}
+        ${userRole === 'mesero' && it.estado==='listo' ? `<button class="btn btn-sm btn-outline-dark" data-action="servido" data-id="${it.id}"><i class="bi bi-box-seam me-1"></i>Entregado</button>`:''}
         ${canCancelar ? `<button class="btn btn-sm btn-outline-danger" data-action="cancelar" data-id="${it.id}"><i class="bi bi-x-octagon me-1"></i>Cancelar</button>`:''}
       </div>`;
 
@@ -401,7 +402,7 @@ $(function(){
       if(arrListos.length === 0) return;
       const mesaId = Number(arrListos?.[0]?.mesa_id || 0);
       const mesero = meseroLabelFromItems(arrListos, arrListos?.[0] || {});
-      const canEntregarMesa = ['mesero', 'administrador'].includes(userRole) && mesaId > 0;
+      const canEntregarMesa = userRole === 'mesero' && mesaId > 0;
 
       const header = `
         <div class="d-flex align-items-center justify-content-between mt-2">
