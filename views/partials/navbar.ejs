@@ -27,6 +27,10 @@
         <a href="/cocina" class="btn btn-outline-light btn-sm" data-bs-toggle="tooltip" title="Cocina"><i class="bi bi-egg-fried"></i></a>
       <% } %>
 
+      <% if (rol === 'barman') { %>
+        <a href="/cocina" class="btn btn-outline-light btn-sm" data-bs-toggle="tooltip" title="Barra"><i class="bi bi-cup-hot"></i></a>
+      <% } %>
+
       <!-- Usuario + logout -->
       <% if (u) { %>
         <div class="vr bg-light opacity-50 mx-1"></div>

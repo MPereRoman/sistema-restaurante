@@ -29,6 +29,19 @@ async function ensureSchema() {
         await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS numero_personas INT NOT NULL DEFAULT 1 AFTER mesero_nombre`);
         await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pagos_borrador LONGTEXT NULL AFTER numero_personas`);
 
+        const [rolCols] = await pool.query(
+            `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'rol'
+             LIMIT 1`
+        );
+        const rolType = String(rolCols?.[0]?.COLUMN_TYPE || '');
+        if (rolType && !rolType.includes("'barman'")) {
+            await pool.query(
+                `ALTER TABLE usuarios
+                 MODIFY rol ENUM('administrador','mesero','cocinero','barman') NOT NULL DEFAULT 'mesero'`
+            );
+        }
+
         const [categoriaCols] = await pool.query(
             `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'tipo_preparacion'`

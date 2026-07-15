@@ -16,7 +16,7 @@ function getBcrypt() {
   return bcrypt;
 }
 
-const ROLES = ['administrador', 'mesero', 'cocinero'];
+const ROLES = ['administrador', 'mesero', 'cocinero', 'barman'];
 
 async function countAdminsExcept(userIdToExclude = null) {
   const params = [];

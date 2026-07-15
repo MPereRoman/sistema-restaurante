@@ -3,7 +3,8 @@
 
 $(function(){
   let allItems = Array.isArray(window.__COCINA_ITEMS__) ? window.__COCINA_ITEMS__ : [];
-  const userRole = String(window.__USER_ROLE__ || '').toLowerCase(); // administrador | cocinero | mesero
+  const userRole = String(window.__USER_ROLE__ || '').toLowerCase(); // administrador | cocinero | barman | mesero
+  const forcedStation = userRole === 'cocinero' ? 'alimento' : (userRole === 'barman' ? 'bebida' : '');
   let entregadosItems = []; // items estado='servido' (cargados por rango de fecha)
   let rechazadosItems = []; // items estado='rechazado' (cargados por rango de fecha)
   let autoRefreshTimer = null;
@@ -11,6 +12,20 @@ $(function(){
   function setText(id, value){
     const el = document.getElementById(id);
     if(el) el.textContent = String(value);
+  }
+
+  function aplicarEstacionForzada(){
+    const filtro = document.getElementById('filtroEstacion');
+    if(!filtro || !forcedStation) return;
+    filtro.value = forcedStation;
+    filtro.disabled = true;
+    filtro.title = userRole === 'barman' ? 'Barra recibe únicamente bebidas' : 'Cocina recibe únicamente alimentos';
+  }
+
+  function getEstacionSeleccionada(){
+    if(forcedStation) return forcedStation;
+    const estacion = String(document.getElementById('filtroEstacion')?.value || '').toLowerCase();
+    return ['alimento','bebida'].includes(estacion) ? estacion : '';
   }
 
   function escapeHtml(s){
@@ -53,9 +68,12 @@ $(function(){
   // Permitir abrir directamente pestaña con ?tab=listos|preparando|enviados
   function activarTabDesdeQuery(){
     const params = new URLSearchParams(window.location.search);
-    const estacion = String(params.get('estacion') || '').toLowerCase();
+    const estacion = forcedStation || String(params.get('estacion') || '').toLowerCase();
     const filtroEstacion = document.getElementById('filtroEstacion');
-    if(filtroEstacion && ['alimento','bebida'].includes(estacion)) filtroEstacion.value = estacion;
+    if(filtroEstacion && ['alimento','bebida'].includes(estacion)) {
+      filtroEstacion.value = estacion;
+      render();
+    }
     const tab = params.get('tab');
     const map = {
       enviados: '#tabEnviados-tab',
@@ -452,7 +470,8 @@ $(function(){
     if(!mesaId) return;
     const resp = await fetch(`/api/cocina/mesa/${encodeURIComponent(mesaId)}/preparar`, {
       method:'PUT',
-      headers:{'Content-Type':'application/json'}
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ tipo_preparacion: getEstacionSeleccionada() || null })
     });
     const data = await resp.json().catch(() => ({}));
     if(!resp.ok){
@@ -561,6 +580,7 @@ $(function(){
   }
 
   // Render inicial + refresh
+  aplicarEstacionForzada();
   render();
   cargarCola();
   activarTabDesdeQuery();

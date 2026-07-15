@@ -30,7 +30,7 @@ async function countUsuarios() {
 
 function defaultRedirectForRole(rol) {
   const r = String(rol || '').toLowerCase();
-  if (r === 'cocinero') return '/cocina';
+  if (['cocinero', 'barman'].includes(r)) return '/cocina';
   if (r === 'mesero') return '/mesas';
   return '/ventas';
 }

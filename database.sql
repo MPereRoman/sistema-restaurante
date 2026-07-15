@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS configuracion_impresion (
 
 -- ===========================
 -- USUARIOS / LOGIN / ROLES
--- Roles soportados: administrador, mesero, cocinero
+-- Roles soportados: administrador, mesero, cocinero, barman
 -- Relacionado con:
 -- - routes/auth.js (login/logout/setup)
 -- - routes/usuarios.js (panel CRUD usuarios)
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     usuario VARCHAR(50) NOT NULL UNIQUE,
     nombre VARCHAR(100) NULL,
     password_hash VARCHAR(255) NOT NULL,
-    rol ENUM('administrador','mesero','cocinero') NOT NULL DEFAULT 'mesero',
+    rol ENUM('administrador','mesero','cocinero','barman') NOT NULL DEFAULT 'mesero',
     activo TINYINT(1) NOT NULL DEFAULT 1,
     last_login TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -283,6 +283,9 @@ ALTER TABLE mesas
 
 ALTER TABLE productos
     ADD COLUMN IF NOT EXISTS tipo_preparacion ENUM('alimento','bebida') NOT NULL DEFAULT 'alimento' AFTER nombre;
+
+ALTER TABLE usuarios
+    MODIFY rol ENUM('administrador','mesero','cocinero','barman') NOT NULL DEFAULT 'mesero';
 
 ALTER TABLE pedidos
     MODIFY estado ENUM('abierto', 'en_cocina', 'preparando', 'listo', 'servido', 'cerrado', 'cancelado', 'rechazado') DEFAULT 'abierto';

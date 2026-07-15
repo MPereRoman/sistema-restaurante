@@ -103,7 +103,7 @@ app.use(authRoutes);
 // Ruta principal (requiere login)
 app.get('/', requireAuth, (req, res) => {
     const rol = String(req.session?.user?.rol || '').toLowerCase();
-    if (rol === 'cocinero') return res.redirect('/cocina');
+    if (['cocinero', 'barman'].includes(rol)) return res.redirect('/cocina');
     if (rol === 'mesero') return res.redirect('/mesas');
     // El historial de ventas es la página principal del administrador.
     return res.redirect('/ventas');
@@ -131,11 +131,11 @@ app.use('/mesas', requireRole(['mesero', 'administrador']), mesasRoutes);
 app.use('/api/mesas', requireRole(['mesero', 'administrador']), mesasRoutes);
 
 // Cocina
-// - Cocinero/Admin: puede preparar/marcar listo
+// - Cocinero: prepara alimentos; Barman: prepara bebidas; Admin: puede operar ambas estaciones
 // - Mesero: solo visualiza y marca "Entregado" en la pestaña de listos (la acción se hace vía /api/mesas/items/:id/estado con validación)
 // Relacionado con: routes/cocina.js (middlewares por ruta) y routes/mesas.js (restricción servido)
-app.use('/cocina', requireRole(['cocinero', 'mesero', 'administrador']), cocinaRoutes);
-app.use('/api/cocina', requireRole(['cocinero', 'mesero', 'administrador']), cocinaRoutes);
+app.use('/cocina', requireRole(['cocinero', 'barman', 'mesero', 'administrador']), cocinaRoutes);
+app.use('/api/cocina', requireRole(['cocinero', 'barman', 'mesero', 'administrador']), cocinaRoutes);
 
 // Configuración y ventas (admin)
 app.use('/configuracion', requireRole('administrador'), configuracionRoutes);
