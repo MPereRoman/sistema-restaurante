@@ -214,10 +214,10 @@
                                    placeholder="Ej: Restaurante El Sabor">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">NIT / RUT</label>
+                            <label class="form-label fw-semibold">R.F.C.</label>
                             <input type="text" class="form-control" name="nit"
                                    value="<%= config.nit || '' %>"
-                                   placeholder="Ej: 900.123.456-7">
+                                   placeholder="Ej: XAXX010101000">
                         </div>
                     </div>
 
@@ -305,6 +305,7 @@
                     <input type="hidden" name="cocina_auto_listo_comanda" value="<%= Number(config.cocina_auto_listo_comanda || 0) %>">
                     <input type="hidden" name="cocina_imprime_servidor"   value="<%= Number(config.cocina_imprime_servidor || 0) %>">
                     <input type="hidden" name="impresora_comandas"        value="<%= config.impresora_comandas || '' %>">
+                    <input type="hidden" name="impresora_comandas_barra" value="<%= config.impresora_comandas_barra || '' %>">
                     <input type="hidden" name="impresora_facturas"        value="<%= config.impresora_facturas || '' %>">
                     <input type="hidden" name="factura_imprime_servidor"  value="<%= Number(config.factura_imprime_servidor || 0) %>">
                     <input type="hidden" name="factura_copias"            value="<%= Number(config.factura_copias || 1) %>">
@@ -370,7 +371,7 @@
 
                     <div class="row g-3 mb-3">
                         <!-- Switches de comanda -->
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="card border h-100">
                                 <div class="card-body">
                                     <div class="form-check form-switch mb-3">
@@ -414,7 +415,7 @@
                     <div class="row g-3 mb-2 align-items-end">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">
-                                <i class="bi bi-printer me-1"></i>Impresora de comandas
+                                <i class="bi bi-printer me-1"></i>Comandas de Cocina · Alimentos
                             </label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="bi bi-printer"></i></span>
@@ -425,10 +426,27 @@
                             </div>
                             <div id="estadoImpresoraComandas" class="small mt-1"></div>
                         </div>
-                        <div class="col-md-6 d-flex gap-2 flex-wrap">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">
+                                <i class="bi bi-cup-straw me-1"></i>Comandas de Barra · Bebidas
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-printer"></i></span>
+                                <select class="form-select" id="impresoraComandasBarra" name="impresora_comandas_barra"
+                                        data-selected="<%= config.impresora_comandas_barra || '' %>">
+                                    <option value="">Usar impresora de Cocina</option>
+                                </select>
+                            </div>
+                            <div id="estadoImpresoraComandasBarra" class="small mt-1"></div>
+                        </div>
+                        <div class="col-md-4 d-flex gap-2 flex-wrap">
                             <button type="button" id="btnImprimirComandaPrueba"
                                     class="btn btn-outline-primary btn-sm">
-                                <i class="bi bi-printer me-1"></i>Prueba en PC (servidor)
+                                <i class="bi bi-printer me-1"></i>Prueba Cocina
+                            </button>
+                            <button type="button" id="btnImprimirBarraPrueba"
+                                    class="btn btn-outline-info btn-sm">
+                                <i class="bi bi-cup-straw me-1"></i>Prueba Barra
                             </button>
                             <a href="/api/mesas/pedidos/1/comanda?auto_print=0" target="_blank"
                                class="btn btn-outline-success btn-sm">
@@ -671,22 +689,25 @@
     // ====================================================
     (function initImpresoras() {
         var selC  = document.getElementById('impresoraComandas');
+        var selB  = document.getElementById('impresoraComandasBarra');
         var selF  = document.getElementById('impresoraFacturas');
         var stC   = document.getElementById('estadoImpresoraComandas');
+        var stB   = document.getElementById('estadoImpresoraComandasBarra');
         var stF   = document.getElementById('estadoImpresoraFacturas');
-        if (!selC || !selF) return;
+        if (!selC || !selB || !selF) return;
 
         var savedC = String(selC.dataset.selected || '').trim();
+        var savedB = String(selB.dataset.selected || '').trim();
         var savedF = String(selF.dataset.selected || '').trim();
 
-        function fillSelect(sel, list, saved, status) {
+        function fillSelect(sel, list, saved, status, emptyLabel) {
             var opts     = Array.isArray(list) ? list : [];
             var inList   = saved && opts.includes(saved);
             sel.innerHTML = '';
 
             var base = document.createElement('option');
             base.value = '';
-            base.textContent = opts.length ? '(Predeterminada del sistema)' : '(Sin impresoras detectadas)';
+            base.textContent = emptyLabel || (opts.length ? '(Predeterminada del sistema)' : '(Sin impresoras detectadas)');
             sel.appendChild(base);
 
             if (!inList && saved) {
@@ -718,16 +739,19 @@
         }
 
         if (stC) stC.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split me-1"></i>Cargando...</span>';
+        if (stB) stB.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split me-1"></i>Cargando...</span>';
         if (stF) stF.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split me-1"></i>Cargando...</span>';
 
         fetch('/configuracion/impresoras')
             .then(function (r) { return r.json(); })
             .then(function (list) {
                 fillSelect(selC, list, savedC, stC);
+                fillSelect(selB, list, savedB, stB, '(Usar impresora de Cocina)');
                 fillSelect(selF, list, savedF, stF);
             })
             .catch(function () {
                 fillSelect(selC, [], savedC, stC);
+                fillSelect(selB, [], savedB, stB, '(Usar impresora de Cocina)');
                 fillSelect(selF, [], savedF, stF);
             });
     })();
@@ -737,17 +761,22 @@
     // Relacionado con: routes/configuracion.js POST /impresion/comanda-prueba
     // ====================================================
     (function initComandaPrueba() {
-        var btn = document.getElementById('btnImprimirComandaPrueba');
+        var botones = [
+            { el: document.getElementById('btnImprimirComandaPrueba'), area: 'alimento' },
+            { el: document.getElementById('btnImprimirBarraPrueba'), area: 'bebida' }
+        ].filter(function (x) { return x.el; });
         var res = document.getElementById('resultadoTestComanda');
-        if (!btn) return;
-        btn.addEventListener('click', async function () {
+        botones.forEach(function (cfg) {
+          var btn = cfg.el;
+          btn.addEventListener('click', async function () {
             var old = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Imprimiendo...';
             if (res) { res.style.display = 'none'; res.innerHTML = ''; }
             try {
                 var resp = await fetch('/configuracion/impresion/comanda-prueba', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' }
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ area: cfg.area })
                 });
                 var data = await resp.json().catch(function () { return {}; });
                 if (!resp.ok) throw new Error(data.error || 'No se pudo imprimir');
@@ -767,6 +796,7 @@
                 btn.disabled = false;
                 btn.innerHTML = old;
             }
+          });
         });
     })();
 
@@ -791,6 +821,14 @@
         if (selComandas && hidComandas) {
             selComandas.addEventListener('change', function () {
                 hidComandas.value = selComandas.value;
+            });
+        }
+
+        var selBarra = document.getElementById('impresoraComandasBarra');
+        var hidBarra = document.querySelector('#formNegocio [name="impresora_comandas_barra"]');
+        if (selBarra && hidBarra) {
+            selBarra.addEventListener('change', function () {
+                hidBarra.value = selBarra.value;
             });
         }
 

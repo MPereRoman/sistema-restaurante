@@ -11,7 +11,7 @@ const { requireRole } = require('../middleware/auth');
 router.get('/', requireRole(['cocinero', 'mesero', 'administrador']), async (req, res) => {
     try {
         const [items] = await db.query(`
-            SELECT i.*, p.mesa_id, p.mesero_nombre, m.numero AS mesa_numero, pr.nombre AS producto_nombre
+            SELECT i.*, p.mesa_id, p.mesero_nombre, m.numero AS mesa_numero, pr.nombre AS producto_nombre, pr.tipo_preparacion
             FROM pedido_items i
             JOIN pedidos p ON p.id = i.pedido_id
             JOIN mesas m ON m.id = p.mesa_id
@@ -31,7 +31,7 @@ router.get('/', requireRole(['cocinero', 'mesero', 'administrador']), async (req
 router.get('/cola', requireRole(['cocinero', 'mesero', 'administrador']), async (req, res) => {
     try {
         const [items] = await db.query(`
-            SELECT i.*, p.mesa_id, p.mesero_nombre, m.numero AS mesa_numero, pr.nombre AS producto_nombre
+            SELECT i.*, p.mesa_id, p.mesero_nombre, m.numero AS mesa_numero, pr.nombre AS producto_nombre, pr.tipo_preparacion
             FROM pedido_items i
             JOIN pedidos p ON p.id = i.pedido_id
             JOIN mesas m ON m.id = p.mesa_id
@@ -76,7 +76,7 @@ router.get('/entregados', requireRole(['cocinero', 'mesero', 'administrador']), 
         }
 
         const [items] = await db.query(`
-            SELECT i.*, p.mesa_id, p.mesero_nombre, m.numero AS mesa_numero, pr.nombre AS producto_nombre
+            SELECT i.*, p.mesa_id, p.mesero_nombre, m.numero AS mesa_numero, pr.nombre AS producto_nombre, pr.tipo_preparacion
             FROM pedido_items i
             JOIN pedidos p ON p.id = i.pedido_id
             JOIN mesas m ON m.id = p.mesa_id
@@ -125,7 +125,7 @@ router.get('/rechazados', requireRole(['cocinero', 'mesero', 'administrador']), 
         }
 
         const [items] = await db.query(`
-            SELECT i.*, p.mesa_id, p.mesero_nombre, m.numero AS mesa_numero, pr.nombre AS producto_nombre
+            SELECT i.*, p.mesa_id, p.mesero_nombre, m.numero AS mesa_numero, pr.nombre AS producto_nombre, pr.tipo_preparacion
             FROM pedido_items i
             JOIN pedidos p ON p.id = i.pedido_id
             JOIN mesas m ON m.id = p.mesa_id

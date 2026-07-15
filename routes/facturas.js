@@ -123,7 +123,7 @@ function buildFacturaTexto({ factura, detalles, pagos, negocio }) {
     out.push(String(negocio?.nombre_negocio || 'FACTURA'));
     if (negocio?.direccion) out.push(String(negocio.direccion));
     if (negocio?.telefono) out.push(`Tel: ${negocio.telefono}`);
-    if (negocio?.nit) out.push(`NIT: ${negocio.nit}`);
+    if (negocio?.nit) out.push(`R.F.C.: ${negocio.nit}`);
     out.push(line);
     out.push(`Factura #: ${factura?.id ?? '-'}`);
     out.push(`Fecha: ${new Date(factura?.fecha || Date.now()).toLocaleString('es-CO')}`);

@@ -53,6 +53,9 @@ $(function(){
   // Permitir abrir directamente pestaña con ?tab=listos|preparando|enviados
   function activarTabDesdeQuery(){
     const params = new URLSearchParams(window.location.search);
+    const estacion = String(params.get('estacion') || '').toLowerCase();
+    const filtroEstacion = document.getElementById('filtroEstacion');
+    if(filtroEstacion && ['alimento','bebida'].includes(estacion)) filtroEstacion.value = estacion;
     const tab = params.get('tab');
     const map = {
       enviados: '#tabEnviados-tab',
@@ -148,6 +151,7 @@ $(function(){
     const hora = ref ? ref.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     const mesa = escapeHtml(it.mesa_numero);
     const producto = escapeHtml(it.producto_nombre);
+    const esBebida = String(it.tipo_preparacion || 'alimento').toLowerCase() === 'bebida';
     const mesero = meseroLabel(it);
     const nota = (it.nota || '').trim();
     const qty = Number(it.cantidad || 0);
@@ -164,7 +168,7 @@ $(function(){
       <div class="d-flex gap-2 flex-wrap justify-content-end mt-2">
         ${canKitchenActions && it.estado==='enviado' ? `<button class="btn btn-sm btn-primary" data-action="prep" data-id="${it.id}"><i class="bi bi-play me-1"></i>Preparar</button>`:''}
         ${canKitchenActions && it.estado==='preparando' ? `<button class="btn btn-sm btn-success" data-action="listo" data-id="${it.id}"><i class="bi bi-check2 me-1"></i>Marcar listo</button>`:''}
-        ${userRole === 'mesero' && it.estado==='listo' ? `<button class="btn btn-sm btn-outline-dark" data-action="servido" data-id="${it.id}"><i class="bi bi-box-seam me-1"></i>Entregado</button>`:''}
+        ${['mesero','administrador'].includes(userRole) && it.estado==='listo' ? `<button class="btn btn-sm btn-outline-dark" data-action="servido" data-id="${it.id}"><i class="bi bi-box-seam me-1"></i>Entregado</button>`:''}
         ${canCancelar ? `<button class="btn btn-sm btn-outline-danger" data-action="cancelar" data-id="${it.id}"><i class="bi bi-x-octagon me-1"></i>Cancelar</button>`:''}
       </div>`;
 
@@ -176,6 +180,7 @@ $(function(){
               <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
                 <span class="badge text-bg-dark"><i class="bi bi-grid-3x3-gap me-1"></i>Mesa ${mesa}</span>
                 <span class="badge text-bg-${ui.badge}"><i class="bi ${ui.icon} me-1"></i>${ui.label}</span>
+                <span class="badge text-bg-${esBebida ? 'info' : 'warning'}"><i class="bi ${esBebida ? 'bi-cup-straw' : 'bi-egg-fried'} me-1"></i>${esBebida ? 'Barra' : 'Cocina'}</span>
                 <span class="meta">${hora ? `${hora} · ${timeAgo(ref)}` : timeAgo(ref)}</span>
               </div>
               <div class="meta mb-1"><i class="bi bi-person-badge me-1"></i>Mesero: ${mesero}</div>
@@ -321,8 +326,11 @@ $(function(){
 
   function filtrar(items){
     const q = getBusqueda();
-    if(!q) return items;
+    const estacion = String(document.getElementById('filtroEstacion')?.value || '').toLowerCase();
     return items.filter(it => {
+      const tipo = String(it.tipo_preparacion || 'alimento').toLowerCase();
+      if(estacion && tipo !== estacion) return false;
+      if(!q) return true;
       const mesa = String(it.mesa_numero || '').toLowerCase();
       const prod = String(it.producto_nombre || '').toLowerCase();
       const nota = String(it.nota || '').toLowerCase();
@@ -402,7 +410,7 @@ $(function(){
       if(arrListos.length === 0) return;
       const mesaId = Number(arrListos?.[0]?.mesa_id || 0);
       const mesero = meseroLabelFromItems(arrListos, arrListos?.[0] || {});
-      const canEntregarMesa = userRole === 'mesero' && mesaId > 0;
+      const canEntregarMesa = ['mesero','administrador'].includes(userRole) && mesaId > 0;
 
       const header = `
         <div class="d-flex align-items-center justify-content-between mt-2">
@@ -465,7 +473,16 @@ $(function(){
 
   $(document).on('click','[data-action="servido"]', async function(){
     const id = this.dataset.id;
-    await fetch(`/api/mesas/items/${id}/estado`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ estado:'servido' }) });
+    const resp = await fetch(`/api/mesas/items/${id}/estado`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ estado:'servido' }) });
+    const data = await resp.json().catch(() => ({}));
+    if(!resp.ok){
+      if (window.Swal && typeof window.Swal.fire === 'function') {
+        await window.Swal.fire({ icon:'error', title:'No se pudo marcar como entregado', text: String(data?.error || 'Error') });
+      } else {
+        alert(String(data?.error || 'No se pudo marcar como entregado'));
+      }
+      return;
+    }
     await cargarCola();
     await aplicarFiltrosHistorico();
   });
@@ -525,6 +542,7 @@ $(function(){
 
   // UI: buscador + refresh + auto
   $('#buscarCocina').on('input', function(){ render(); });
+  $('#filtroEstacion').on('change', function(){ render(); });
   $('#btnRefreshCocina').on('click', async function(){ await cargarCola(); });
   $('#toggleAutoRefresh').on('change', function(){
     const enabled = !!this.checked;

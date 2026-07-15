@@ -61,6 +61,7 @@ router.get('/', async (req, res) => {
                     cocina_auto_listo_comanda: 0,
                     cocina_imprime_servidor: 0,
                     impresora_comandas: '',
+                    impresora_comandas_barra: '',
                     impresora_facturas: '',
                     factura_imprime_servidor: 0,
                     factura_copias: 1,
@@ -126,6 +127,7 @@ router.post('/', upload.fields([
             cocina_auto_listo_comanda,
             cocina_imprime_servidor,
             impresora_comandas,
+            impresora_comandas_barra,
             impresora_facturas,
             factura_imprime_servidor,
             factura_copias,
@@ -145,6 +147,7 @@ router.post('/', upload.fields([
             Number(String(cocina_auto_listo_comanda || '0')) ? 1 : 0,
             Number(String(cocina_imprime_servidor || '0')) ? 1 : 0,
             String(impresora_comandas || '').trim() || null,
+            String(impresora_comandas_barra || '').trim() || null,
             String(impresora_facturas || '').trim() || null,
             Number(String(factura_imprime_servidor || '0')) ? 1 : 0,
             Math.max(1, Number(factura_copias || 1) || 1),
@@ -167,7 +170,7 @@ router.post('/', upload.fields([
                 INSERT INTO configuracion_impresion 
                 (nombre_negocio, direccion, telefono, nit, pie_pagina, 
                  ancho_papel, font_size, cocina_auto_listo_comanda, cocina_imprime_servidor,
-                 impresora_comandas, impresora_facturas, factura_imprime_servidor, factura_copias, factura_auto_print
+                 impresora_comandas, impresora_comandas_barra, impresora_facturas, factura_imprime_servidor, factura_copias, factura_auto_print
             `;
             if (req.files?.logo) sql += ', logo_data, logo_tipo';
             if (req.files?.qr) sql += ', qr_data, qr_tipo';
@@ -180,7 +183,7 @@ router.post('/', upload.fields([
                 UPDATE configuracion_impresion 
                 SET nombre_negocio = ?, direccion = ?, telefono = ?, nit = ?,
                     pie_pagina = ?, ancho_papel = ?, font_size = ?, cocina_auto_listo_comanda = ?, cocina_imprime_servidor = ?,
-                    impresora_comandas = ?, impresora_facturas = ?, factura_imprime_servidor = ?, factura_copias = ?, factura_auto_print = ?
+                    impresora_comandas = ?, impresora_comandas_barra = ?, impresora_facturas = ?, factura_imprime_servidor = ?, factura_copias = ?, factura_auto_print = ?
             `;
             if (req.files?.logo) sql += ', logo_data = ?, logo_tipo = ?';
             if (req.files?.qr) sql += ', qr_data = ?, qr_tipo = ?';
@@ -303,10 +306,11 @@ async function imprimirTextoServidor(texto, impresoraNombre, anchoPapelMm, fontS
 // Imprime una comanda de prueba desde el servidor (PC), sin navegador móvil.
 router.post('/impresion/comanda-prueba', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT nombre_negocio, impresora_comandas, ancho_papel, font_size FROM configuracion_impresion LIMIT 1');
+        const [rows] = await db.query('SELECT nombre_negocio, impresora_comandas, impresora_comandas_barra, ancho_papel, font_size FROM configuracion_impresion LIMIT 1');
         const cfg       = rows?.[0] || {};
         const negocio   = String(cfg?.nombre_negocio || 'MI NEGOCIO');
-        const impresora = String(cfg?.impresora_comandas || '').trim() || null;
+        const area       = String(req.body?.area || 'alimento').toLowerCase() === 'bebida' ? 'bebida' : 'alimento';
+        const impresora = String(area === 'bebida' ? (cfg?.impresora_comandas_barra || cfg?.impresora_comandas || '') : (cfg?.impresora_comandas || '')).trim() || null;
         const anchoPapel = Number(cfg?.ancho_papel || 80);
         const fontSize   = Number(cfg?.font_size   || 1);
 
@@ -314,7 +318,7 @@ router.post('/impresion/comanda-prueba', async (req, res) => {
         const texto = [
             negocio,
             line,
-            'COMANDA DE PRUEBA',
+            `COMANDA DE PRUEBA · ${area === 'bebida' ? 'BARRA' : 'COCINA'}`,
             `Fecha: ${new Date().toLocaleString('es-CO')}`,
             'Mesa: 1',
             'Mesero: Prueba',
@@ -503,4 +507,4 @@ router.get('/diagnostico', async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;

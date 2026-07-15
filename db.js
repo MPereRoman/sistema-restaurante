@@ -29,6 +29,27 @@ async function ensureSchema() {
         await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS numero_personas INT NOT NULL DEFAULT 1 AFTER mesero_nombre`);
         await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pagos_borrador LONGTEXT NULL AFTER numero_personas`);
 
+        const [categoriaCols] = await pool.query(
+            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'tipo_preparacion'`
+        );
+        const categoriaNueva = !categoriaCols.length;
+        await pool.query(
+            `ALTER TABLE productos ADD COLUMN IF NOT EXISTS tipo_preparacion ENUM('alimento','bebida') NOT NULL DEFAULT 'alimento' AFTER nombre`
+        );
+        if (categoriaNueva) {
+            await pool.query(
+                `UPDATE productos SET tipo_preparacion = 'bebida'
+                 WHERE UPPER(codigo) IN ('CAFE','CHOC','REFR','TEFR')
+                    OR LOWER(nombre) REGEXP 'cafe|café|chocolate|refresco|te |té |agua|jugo|bebida|licuado'`
+            );
+        }
+
+        await pool.query(
+            `ALTER TABLE configuracion_impresion
+             ADD COLUMN IF NOT EXISTS impresora_comandas_barra VARCHAR(150) NULL AFTER impresora_comandas`
+        );
+
         // Tabla de pagos por factura (pago mixto) — con soporte para QR
         await pool.query(`
             CREATE TABLE IF NOT EXISTS factura_pagos (

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS productos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     codigo VARCHAR(50) NOT NULL UNIQUE,
     nombre VARCHAR(100) NOT NULL,
+    tipo_preparacion ENUM('alimento','bebida') NOT NULL DEFAULT 'alimento',
     precio_kg DECIMAL(10,2) NOT NULL DEFAULT 0,
     precio_unidad DECIMAL(10,2) NOT NULL DEFAULT 0,
     precio_libra DECIMAL(10,2) NOT NULL DEFAULT 0,
@@ -111,6 +112,7 @@ CREATE TABLE IF NOT EXISTS configuracion_impresion (
     cocina_imprime_servidor TINYINT(1) NOT NULL DEFAULT 0,
     -- Preferencias de impresión (referenciales en entorno web).
     impresora_comandas VARCHAR(150) NULL,
+    impresora_comandas_barra VARCHAR(150) NULL,
     impresora_facturas VARCHAR(150) NULL,
     factura_imprime_servidor TINYINT(1) NOT NULL DEFAULT 0,
     factura_copias INT NOT NULL DEFAULT 1,
@@ -246,6 +248,9 @@ ALTER TABLE configuracion_impresion
     ADD COLUMN IF NOT EXISTS impresora_comandas VARCHAR(150) NULL;
 
 ALTER TABLE configuracion_impresion
+    ADD COLUMN IF NOT EXISTS impresora_comandas_barra VARCHAR(150) NULL AFTER impresora_comandas;
+
+ALTER TABLE configuracion_impresion
     ADD COLUMN IF NOT EXISTS impresora_facturas VARCHAR(150) NULL;
 
 ALTER TABLE configuracion_impresion
@@ -275,6 +280,9 @@ ALTER TABLE pedidos
 
 ALTER TABLE mesas
     ADD COLUMN IF NOT EXISTS activa TINYINT(1) NOT NULL DEFAULT 1 AFTER estado;
+
+ALTER TABLE productos
+    ADD COLUMN IF NOT EXISTS tipo_preparacion ENUM('alimento','bebida') NOT NULL DEFAULT 'alimento' AFTER nombre;
 
 ALTER TABLE pedidos
     MODIFY estado ENUM('abierto', 'en_cocina', 'preparando', 'listo', 'servido', 'cerrado', 'cancelado', 'rechazado') DEFAULT 'abierto';

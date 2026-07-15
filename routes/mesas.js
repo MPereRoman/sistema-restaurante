@@ -67,14 +67,15 @@ async function getEnvioCocinaConfig(executor) {
     const q = executor && typeof executor.query === 'function' ? executor : db;
     try {
         const [rows] = await q.query(
-            `SELECT cocina_auto_listo_comanda, cocina_imprime_servidor, impresora_comandas
+            `SELECT cocina_auto_listo_comanda, cocina_imprime_servidor, impresora_comandas, impresora_comandas_barra
              FROM configuracion_impresion
              LIMIT 1`
         );
         return {
             auto_listo_comanda: Number(rows?.[0]?.cocina_auto_listo_comanda || 0) === 1,
             imprime_servidor: Number(rows?.[0]?.cocina_imprime_servidor || 0) === 1,
-            impresora_comandas: String(rows?.[0]?.impresora_comandas || '').trim() || null
+            impresora_comandas: String(rows?.[0]?.impresora_comandas || '').trim() || null,
+            impresora_comandas_barra: String(rows?.[0]?.impresora_comandas_barra || '').trim() || null
         };
     } catch (e) {
         // Compatibilidad con instalaciones donde aún no existe alguna columna nueva.
@@ -90,10 +91,11 @@ async function getEnvioCocinaConfig(executor) {
     }
 }
 
-function buildComandaTexto({ pedido, items, negocio }) {
+function buildComandaTexto({ pedido, items, negocio, area }) {
     const line = '-'.repeat(42);
     const lines = [];
     lines.push(String(negocio || 'COMANDA'));
+    lines.push(`DESTINO: ${String(area || 'COCINA').toUpperCase()}`);
     lines.push(line);
     lines.push(`Mesa: ${pedido?.mesa_numero ?? '-'}`);
     lines.push(`Personas: ${Math.max(1, Number(pedido?.numero_personas || 1))}`);
@@ -610,7 +612,7 @@ router.get('/pedidos/:pedidoId/comanda', async (req, res) => {
         const marcarImpresos = String(req.query.marcar_impresos || '1') === '1';
 
         let sql = `
-            SELECT i.*, pr.nombre AS producto_nombre
+            SELECT i.*, pr.nombre AS producto_nombre, pr.tipo_preparacion
             FROM pedido_items i
             JOIN productos pr ON pr.id = i.producto_id
             WHERE i.pedido_id = ?
@@ -684,7 +686,8 @@ router.post('/pedidos/:pedidoId/comanda/imprimir-servidor', async (req, res) => 
 
         const [cfgRows] = await db.query('SELECT * FROM configuracion_impresion LIMIT 1');
         const cfg         = cfgRows?.[0] || {};
-        const printerName = String(cfg?.impresora_comandas || '').trim() || null;
+        const printerCocina = String(cfg?.impresora_comandas || '').trim() || null;
+        const printerBarra = String(cfg?.impresora_comandas_barra || cfg?.impresora_comandas || '').trim() || null;
         // Parámetros de papel — necesarios para System.Drawing.Printing (tamaño del rollo térmico)
         const anchoPapel  = Number(cfg?.ancho_papel || 80);
         const fontSize    = Number(cfg?.font_size   || 1);
@@ -701,7 +704,7 @@ router.post('/pedidos/:pedidoId/comanda/imprimir-servidor', async (req, res) => 
         const pedido = pedidos[0];
 
         const [items] = await db.query(
-            `SELECT i.*, pr.nombre AS producto_nombre
+            `SELECT i.*, pr.nombre AS producto_nombre, pr.tipo_preparacion
              FROM pedido_items i
              JOIN productos pr ON pr.id = i.producto_id
              WHERE i.pedido_id = ?
@@ -714,25 +717,34 @@ router.post('/pedidos/:pedidoId/comanda/imprimir-servidor', async (req, res) => 
             return res.status(200).json({ printed: false, message: 'No hay items nuevos para imprimir' });
         }
 
-        const texto = buildComandaTexto({
-            pedido,
-            items,
-            negocio: cfg?.nombre_negocio || 'COMANDA'
-        });
-        await imprimirTextoEnServidor(texto, printerName, anchoPapel, fontSize);
+        const grupos = [
+            { tipo: 'alimento', area: 'COCINA', impresora: printerCocina, items: items.filter(it => String(it.tipo_preparacion || 'alimento') !== 'bebida') },
+            { tipo: 'bebida', area: 'BARRA', impresora: printerBarra, items: items.filter(it => String(it.tipo_preparacion || 'alimento') === 'bebida') }
+        ].filter(grupo => grupo.items.length > 0);
 
-        const idsImpresos = items.map((it) => Number(it.id)).filter((n) => Number.isInteger(n) && n > 0);
-        await db.query(
-            `UPDATE pedido_items
-             SET comanda_impresa_at = COALESCE(comanda_impresa_at, NOW())
-             WHERE id IN (?)`,
-            [idsImpresos]
-        );
+        const impresiones = [];
+        for (const grupo of grupos) {
+            const texto = buildComandaTexto({
+                pedido,
+                items: grupo.items,
+                negocio: cfg?.nombre_negocio || 'COMANDA',
+                area: grupo.area
+            });
+            await imprimirTextoEnServidor(texto, grupo.impresora, anchoPapel, fontSize);
+            const idsGrupo = grupo.items.map(it => Number(it.id)).filter(n => Number.isInteger(n) && n > 0);
+            await db.query(
+                `UPDATE pedido_items SET comanda_impresa_at = COALESCE(comanda_impresa_at, NOW()) WHERE id IN (?)`,
+                [idsGrupo]
+            );
+            impresiones.push({ area: grupo.area, impresora: grupo.impresora || 'predeterminada', total_items: idsGrupo.length });
+        }
+
+        const idsImpresos = impresiones.reduce((total, impresion) => total + Number(impresion.total_items || 0), 0);
 
         return res.json({
             printed: true,
-            impresora: printerName || 'predeterminada',
-            total_items: idsImpresos.length
+            impresiones,
+            total_items: idsImpresos
         });
     } catch (error) {
         console.error('Error al imprimir comanda en servidor:', error);
@@ -1474,7 +1486,7 @@ router.put('/pedidos/:pedidoId/mover', async (req, res) => {
 router.put('/:mesaId/entregar', async (req, res) => {
     try {
         const rol = String(req.session?.user?.rol || '').toLowerCase();
-        if (rol !== 'mesero') return res.status(403).json({ error: 'Solo un mesero puede entregar la mesa' });
+        if (!['mesero', 'administrador'].includes(rol)) return res.status(403).json({ error: 'No autorizado para entregar la mesa' });
         const mesaId = Number(req.params.mesaId);
         if (!Number.isInteger(mesaId) || mesaId <= 0) return res.status(400).json({ error: 'Mesa invalida' });
 

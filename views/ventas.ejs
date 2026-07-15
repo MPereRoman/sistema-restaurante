@@ -134,7 +134,7 @@
                     <table class="table table-hover">
                         <thead class="table-light sticky-top">
                             <tr>
-                                <th>Factura #</th>
+                                <th>Factura # <span class="badge text-bg-light border ms-1" title="El folio nunca se reinicia">Permanente</span></th>
                                 <th>Fecha</th>
                                 <th>Forma de Pago</th>
                                 <th class="text-end">Total</th>
@@ -195,7 +195,7 @@
         <div class="row g-3 mb-3">
             <div class="col-12 col-md-4">
                 <div class="kpi-card">
-                    <div class="kpi-label"><i class="bi bi-receipt me-1"></i>Total de facturas</div>
+                    <div class="kpi-label"><i class="bi bi-receipt me-1"></i>Facturas del período</div>
                     <div class="kpi-value text-primary" id="kpiFacturas">—</div>
                 </div>
             </div>
@@ -242,7 +242,7 @@
             </div>
             <div class="col-12 col-lg-6">
                 <div class="chart-card">
-                    <div class="chart-title"><i class="bi bi-clock me-1"></i>Horas pico del día</div>
+                    <div class="chart-title"><i class="bi bi-clock me-1"></i>Horas pico de hoy</div>
                     <canvas id="chartHoras" style="max-height:220px"></canvas>
                     <p class="text-muted small text-center mt-2 mb-0" id="noHoras" style="display:none">Sin datos para el período seleccionado.</p>
                 </div>
@@ -445,19 +445,13 @@
         // Establecer valores iniciales desde la URL o defaults
         (function initFiltrosDesdeURL(){
             const p = new URLSearchParams(window.location.search);
-            const desde = p.get('desde');
-            const hasta = p.get('hasta');
+            const filtrosServidor = <%- JSON.stringify(typeof filtros !== 'undefined' ? filtros : {}) %>;
+            const desde = p.get('desde') || filtrosServidor.desde;
+            const hasta = p.get('hasta') || filtrosServidor.hasta;
             const q = p.get('q') || '';
             if (desde) document.getElementById('fechaDesde').value = desde;
             if (hasta) document.getElementById('fechaHasta').value = hasta;
             if (q) document.getElementById('buscarVentas').value = q;
-            if (!desde || !hasta) {
-                const hoy = new Date();
-                const hace30Dias = new Date();
-                hace30Dias.setDate(hace30Dias.getDate() - 30);
-                document.getElementById('fechaDesde').value = document.getElementById('fechaDesde').value || hace30Dias.toISOString().split('T')[0];
-                document.getElementById('fechaHasta').value = document.getElementById('fechaHasta').value || hoy.toISOString().split('T')[0];
-            }
         })();
 
         // Inicializar tooltips

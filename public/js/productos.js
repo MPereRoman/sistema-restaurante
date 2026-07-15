@@ -501,6 +501,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const productoData = {
             codigo: document.getElementById('codigo').value,
             nombre: document.getElementById('nombre').value,
+            tipo_preparacion: document.getElementById('tipoPreparacion').value,
             // KG se conserva oculto para una futura reactivación.
             precio_kg: parseFloat(document.getElementById('precioKg').value) || 0,
             precio_unidad: parseFloat(document.getElementById('precioUnidad').value) || 0,
@@ -537,6 +538,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         document.getElementById('productoId').value = '';
         document.getElementById('formProducto').reset();
+        document.getElementById('tipoPreparacion').value = 'alimento';
         document.getElementById('modalTitle').textContent = 'Nuevo Producto';
         
         // Enfocar el campo de código después de que el modal se muestre completamente
@@ -573,6 +575,7 @@ function editarProducto(id) {
             document.getElementById('productoId').value = producto.id;
             document.getElementById('codigo').value = producto.codigo;
             document.getElementById('nombre').value = producto.nombre;
+            document.getElementById('tipoPreparacion').value = producto.tipo_preparacion || 'alimento';
             document.getElementById('precioKg').value = producto.precio_kg;
             document.getElementById('precioUnidad').value = producto.precio_unidad;
             document.getElementById('precioLibra').value = 0;

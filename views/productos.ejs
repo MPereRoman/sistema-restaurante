@@ -84,6 +84,7 @@
                             <tr>
                                 <th>Código</th>
                                 <th>Nombre</th>
+                                <th>Categoría</th>
                                 <th class="text-end">Precio</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
@@ -93,6 +94,7 @@
                                 <tr>
                                     <td><%= producto.codigo %></td>
                                     <td><%= producto.nombre %></td>
+                                    <td><span class="badge text-bg-<%= producto.tipo_preparacion === 'bebida' ? 'info' : 'warning' %>"><%= producto.tipo_preparacion === 'bebida' ? 'Bebida' : 'Alimento' %></span></td>
                                     <td class="text-end">$<%= (Number(producto.precio_unidad) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }) %></td>
                                     <td class="text-center">
                                         <div class="action-buttons">
@@ -148,6 +150,14 @@
                         <div class="mb-3">
                             <label class="form-label">Nombre</label>
                             <input type="text" class="form-control" id="nombre" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Categoría de preparación</label>
+                            <select class="form-select" id="tipoPreparacion" required>
+                                <option value="alimento">Alimento · Cocina</option>
+                                <option value="bebida">Bebida · Barra</option>
+                            </select>
+                            <div class="form-text">Define a qué estación se envía la comanda.</div>
                         </div>
                         <div class="row">
                             <div class="col-md-6 d-none">

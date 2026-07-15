@@ -191,16 +191,23 @@
             Sin ítems para imprimir.
         </div>
     <% } else { %>
-        <% items.forEach(function(it){ %>
-            <div class="linea">
-                <div class="linea-qty"><%= Number(it.cantidad || 0) %></div>
-                <div class="linea-info">
-                    <div class="linea-nombre"><%= it.producto_nombre %></div>
-                    <% if (String(it.nota || '').trim()) { %>
-                        <div class="nota">&#9888; <%= it.nota %></div>
-                    <% } %>
+        <% const grupos = [
+            { titulo: 'COCINA · ALIMENTOS', items: items.filter(it => String(it.tipo_preparacion || 'alimento') !== 'bebida') },
+            { titulo: 'BARRA · BEBIDAS', items: items.filter(it => String(it.tipo_preparacion || 'alimento') === 'bebida') }
+        ].filter(g => g.items.length); %>
+        <% grupos.forEach(function(grupo){ %>
+            <div class="titulo-comanda" style="margin-top:3mm;"><%= grupo.titulo %></div>
+            <% grupo.items.forEach(function(it){ %>
+                <div class="linea">
+                    <div class="linea-qty"><%= Number(it.cantidad || 0) %></div>
+                    <div class="linea-info">
+                        <div class="linea-nombre"><%= it.producto_nombre %></div>
+                        <% if (String(it.nota || '').trim()) { %>
+                            <div class="nota">&#9888; <%= it.nota %></div>
+                        <% } %>
+                    </div>
                 </div>
-            </div>
+            <% }) %>
         <% }) %>
     <% } %>
 

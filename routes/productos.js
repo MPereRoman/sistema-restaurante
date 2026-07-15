@@ -3,6 +3,13 @@ const router = express.Router();
 const db = require('../db');
 let ExcelJS; // import perezoso para template/import
 
+function normalizarTipoPreparacion(value, nombre = '') {
+    const tipo = String(value || '').toLowerCase().trim();
+    if (tipo === 'bebida') return 'bebida';
+    if (tipo === 'alimento') return 'alimento';
+    return /cafe|café|chocolate|refresco|té|\bte\b|agua|jugo|bebida|licuado/i.test(String(nombre || '')) ? 'bebida' : 'alimento';
+}
+
 // GET /productos - Mostrar página de productos
 router.get('/', async (req, res) => {
     try {
@@ -220,7 +227,7 @@ router.get('/:id(\\d+)', async (req, res) => {
 // POST /productos - Crear nuevo producto
 router.post('/', async (req, res) => {
     try {
-        const { codigo, nombre, precio_kg, precio_unidad, precio_libra } = req.body;
+        const { codigo, nombre, tipo_preparacion, precio_kg, precio_unidad, precio_libra } = req.body;
         
         // Validar datos
         if (!codigo || !nombre) {
@@ -228,8 +235,8 @@ router.post('/', async (req, res) => {
         }
 
         const result = await db.query(
-            'INSERT INTO productos (codigo, nombre, precio_kg, precio_unidad, precio_libra) VALUES (?, ?, ?, ?, ?)',
-            [codigo, nombre, precio_kg || 0, precio_unidad || 0, precio_libra || 0]
+            'INSERT INTO productos (codigo, nombre, tipo_preparacion, precio_kg, precio_unidad, precio_libra) VALUES (?, ?, ?, ?, ?, ?)',
+            [codigo, nombre, normalizarTipoPreparacion(tipo_preparacion, nombre), precio_kg || 0, precio_unidad || 0, precio_libra || 0]
         );
 
         res.status(201).json({ 
@@ -248,7 +255,7 @@ router.post('/', async (req, res) => {
 // PUT /productos/:id - Actualizar producto
 router.put('/:id', async (req, res) => {
     try {
-        const { codigo, nombre, precio_kg, precio_unidad, precio_libra } = req.body;
+        const { codigo, nombre, tipo_preparacion, precio_kg, precio_unidad, precio_libra } = req.body;
         
         // Validar datos
         if (!codigo || !nombre) {
@@ -256,8 +263,8 @@ router.put('/:id', async (req, res) => {
         }
 
         const result = await db.query(
-            'UPDATE productos SET codigo = ?, nombre = ?, precio_kg = ?, precio_unidad = ?, precio_libra = ? WHERE id = ?',
-            [codigo, nombre, precio_kg || 0, precio_unidad || 0, precio_libra || 0, req.params.id]
+            'UPDATE productos SET codigo = ?, nombre = ?, tipo_preparacion = ?, precio_kg = ?, precio_unidad = ?, precio_libra = ? WHERE id = ?',
+            [codigo, nombre, normalizarTipoPreparacion(tipo_preparacion, nombre), precio_kg || 0, precio_unidad || 0, precio_libra || 0, req.params.id]
         );
 
         if (result.affectedRows === 0) {
@@ -301,7 +308,7 @@ router.get('/plantilla', async (req, res) => {
         const ws = wb.addWorksheet('Instrucciones');
         ws.addRow(['PLANTILLA DE PRODUCTOS']).font = { bold: true, size: 16 };
         ws.addRow(['1) No cambie los encabezados de la hoja "Productos".']).font = { color: { argb: 'FF495057' } };
-        ws.addRow(['2) Columnas obligatorias: codigo, nombre. Los precios pueden ser 0.']).font = { color: { argb: 'FF495057' } };
+        ws.addRow(['2) Columnas obligatorias: codigo, nombre. Categoría admite alimento o bebida.']).font = { color: { argb: 'FF495057' } };
         ws.addRow(['3) Use punto como decimal (ej: 1234.56).']).font = { color: { argb: 'FF495057' } };
         ws.addRow(['4) El código debe ser único. Si ya existe, se actualizarán precios/nombre.']).font = { color: { argb: 'FF495057' } };
         ws.getColumn(1).width = 80;
@@ -311,6 +318,7 @@ router.get('/plantilla', async (req, res) => {
         table.columns = [
             { header: 'codigo', key: 'codigo', width: 18 },
             { header: 'nombre', key: 'nombre', width: 32 },
+            { header: 'categoria', key: 'categoria', width: 18 },
             { header: 'precio', key: 'precio_unidad', width: 16 }
         ];
         const headerRow = table.getRow(1);
@@ -320,14 +328,15 @@ router.get('/plantilla', async (req, res) => {
         table.views = [{ state: 'frozen', ySplit: 1 }];
 
         // Ejemplos
-        table.addRow({ codigo: 'P001', nombre: 'Café americano', precio_unidad: 55 });
-        table.addRow({ codigo: 'P002', nombre: 'Croissant', precio_unidad: 48 });
-        table.addRow({ codigo: 'P003', nombre: 'Té helado', precio_unidad: 45 });
+        table.addRow({ codigo: 'P001', nombre: 'Café americano', categoria: 'bebida', precio_unidad: 55 });
+        table.addRow({ codigo: 'P002', nombre: 'Croissant', categoria: 'alimento', precio_unidad: 48 });
+        table.addRow({ codigo: 'P003', nombre: 'Té helado', categoria: 'bebida', precio_unidad: 45 });
 
         // Validaciones (toda la columna a partir de fila 2)
         table.dataValidations.add('A2:A1048576', { type: 'textLength', operator: 'greaterThan', formulae: [0], allowBlank: false, showErrorMessage: true, errorTitle: 'Código requerido', error: 'Ingrese un código' });
         table.dataValidations.add('B2:B1048576', { type: 'textLength', operator: 'greaterThan', formulae: [0], allowBlank: false, showErrorMessage: true, errorTitle: 'Nombre requerido', error: 'Ingrese el nombre' });
-        ['C'].forEach(col => {
+        table.dataValidations.add('C2:C1048576', { type: 'list', formulae: ['"alimento,bebida"'], allowBlank: true, showErrorMessage: true, errorTitle: 'Categoría inválida', error: 'Use alimento o bebida' });
+        ['D'].forEach(col => {
             table.dataValidations.add(`${col}2:${col}1048576`, { type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], allowBlank: true, showErrorMessage: true, errorTitle: 'Precio inválido', error: 'Debe ser número ≥ 0 (use punto decimal)' });
         });
 
@@ -350,17 +359,29 @@ router.post('/importar', upload.single('archivo'), async (req, res) => {
         const ws = wb.getWorksheet('Productos') || wb.worksheets[0];
         if (!ws) return res.status(400).json({ error: 'Hoja Productos no encontrada' });
 
-        const header = ['codigo','nombre','precio'];
-        const colIdx = header.map((h,i)=> i+1);
+        const encabezados = {};
+        ws.getRow(1).eachCell((cell, col) => {
+            const nombre = String(cell.value || '').trim().toLowerCase();
+            if (nombre) encabezados[nombre] = col;
+        });
+        const colCodigo = encabezados.codigo;
+        const colNombre = encabezados.nombre;
+        const colCategoria = encabezados.categoria || encabezados.tipo_preparacion;
+        const colPrecio = encabezados.precio || encabezados.precio_unidad;
+        if (!colCodigo || !colNombre) return res.status(400).json({ error: 'Faltan las columnas codigo y nombre' });
         const rows = [];
         ws.eachRow((row, idx) => {
             if (idx === 1) return; // encabezado
-            const r = header.reduce((acc, key, i) => { acc[key] = row.getCell(i+1).value || ''; return acc; }, {});
-            if (!r.codigo || !r.nombre) return;
+            const codigo = row.getCell(colCodigo).value || '';
+            const nombre = row.getCell(colNombre).value || '';
+            const categoria = colCategoria ? row.getCell(colCategoria).value : '';
+            const precio = colPrecio ? row.getCell(colPrecio).value : 0;
+            if (!codigo || !nombre) return;
             rows.push({
-                codigo: String(r.codigo).trim(),
-                nombre: String(r.nombre).trim(),
-                precio_unidad: Number(r.precio ?? r.precio_unidad ?? 0)
+                codigo: String(codigo).trim(),
+                nombre: String(nombre).trim(),
+                tipo_preparacion: normalizarTipoPreparacion(categoria, nombre),
+                precio_unidad: Number(precio || 0)
             });
         });
 
@@ -371,8 +392,8 @@ router.post('/importar', upload.single('archivo'), async (req, res) => {
             await connection.beginTransaction();
             for (const p of rows) {
                 await connection.query(
-                    'INSERT INTO productos (codigo, nombre, precio_kg, precio_unidad, precio_libra) VALUES (?,?,0,?,0) ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), precio_unidad=VALUES(precio_unidad)',
-                    [p.codigo, p.nombre, p.precio_unidad]
+                    'INSERT INTO productos (codigo, nombre, tipo_preparacion, precio_kg, precio_unidad, precio_libra) VALUES (?,?,?,0,?,0) ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), tipo_preparacion=VALUES(tipo_preparacion), precio_unidad=VALUES(precio_unidad)',
+                    [p.codigo, p.nombre, p.tipo_preparacion, p.precio_unidad]
                 );
             }
             await connection.commit();

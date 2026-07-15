@@ -68,13 +68,20 @@
 
         <div class="cocina-toolbar mb-3">
           <div class="row g-2 align-items-center">
-            <div class="col-12 col-md-6">
+            <div class="col-12 col-md-5">
               <div class="input-group">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                 <input id="buscarCocina" class="form-control" placeholder="Buscar por mesa, producto o nota...">
               </div>
             </div>
-            <div class="col-12 col-md-6 d-flex justify-content-md-end gap-2 flex-wrap">
+            <div class="col-12 col-md-2">
+              <select id="filtroEstacion" class="form-select" aria-label="Filtrar estación">
+                <option value="">Todas las estaciones</option>
+                <option value="alimento">Cocina · Alimentos</option>
+                <option value="bebida">Barra · Bebidas</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-5 d-flex justify-content-md-end gap-2 flex-wrap">
               <span class="badge text-bg-primary kpi-badge">Enviados: <span id="countEnviados">0</span></span>
               <span class="badge text-bg-warning kpi-badge">Preparando: <span id="countPreparando">0</span></span>
               <span class="badge text-bg-success kpi-badge">Listos: <span id="countListos">0</span></span>

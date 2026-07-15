@@ -2,6 +2,21 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+function formatLocalDate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function getCurrentWeekRange() {
+    const hoy = new Date();
+    const inicio = new Date(hoy);
+    inicio.setHours(0, 0, 0, 0);
+    inicio.setDate(inicio.getDate() - ((inicio.getDay() + 6) % 7));
+    return { desde: formatLocalDate(inicio), hasta: formatLocalDate(hoy), hoy: formatLocalDate(hoy) };
+}
+
 /**
  * Construye cláusula WHERE y params para filtros de ventas.
  * Relacionado con:
@@ -154,8 +169,8 @@ async function getDiasMasMovimiento(queryParams) {
     } catch (_) { return []; }
 }
 
-async function getHorasPico(queryParams) {
-    const { whereSql, params } = buildVentasWhere(queryParams);
+async function getHorasPico(fechaHoy) {
+    const { whereSql, params } = buildVentasWhere({ desde: fechaHoy, hasta: fechaHoy });
     const sql = `
         SELECT HOUR(f.fecha) AS hora,
                COUNT(*)       AS num_ventas,
@@ -200,7 +215,13 @@ async function getKPIs(queryParams) {
 // Ruta principal de ventas con filtros opcionales por fecha
 router.get('/', async (req, res) => {
     try {
-        const { whereSql, params } = buildVentasWhere(req.query);
+        const semana = getCurrentWeekRange();
+        const filtros = {
+            ...req.query,
+            desde: req.query.desde || semana.desde,
+            hasta: req.query.hasta || semana.hasta
+        };
+        const { whereSql, params } = buildVentasWhere(filtros);
         const query = `
             SELECT f.*, c.nombre as cliente_nombre
             FROM facturas f
@@ -211,14 +232,14 @@ router.get('/', async (req, res) => {
 
         const [ventas] = await db.query(query, params);
         const [totales, productos, dias, horas, kpis] = await Promise.all([
-            getTotalesPorMetodo(req.query),
-            getProductosMasVendidos(req.query),
-            getDiasMasMovimiento(req.query),
-            getHorasPico(req.query),
-            getKPIs(req.query)
+            getTotalesPorMetodo(filtros),
+            getProductosMasVendidos(filtros),
+            getDiasMasMovimiento(filtros),
+            getHorasPico(semana.hoy),
+            getKPIs(filtros)
         ]);
         const analytics = { productos, dias, horas, kpis };
-        res.render('ventas', { ventas, totales, analytics });
+        res.render('ventas', { ventas, totales, analytics, filtros, horas_fecha: semana.hoy });
     } catch (error) {
         console.error('Error al obtener ventas:', error);
         res.status(500).send('Error al cargar el historial de ventas');
@@ -310,7 +331,13 @@ router.get('/export', async (req, res) => {
         }
 
         // ── Datos base ────────────────────────────────────────────────────────
-        const { whereSql, params } = buildVentasWhere(req.query);
+        const semana = getCurrentWeekRange();
+        const filtros = {
+            ...req.query,
+            desde: req.query.desde || semana.desde,
+            hasta: req.query.hasta || semana.hasta
+        };
+        const { whereSql, params } = buildVentasWhere(filtros);
         const queryFinal = `
             SELECT f.id, f.fecha, c.nombre AS cliente, f.forma_pago, f.total,
                    p.nombre AS producto,
@@ -324,20 +351,22 @@ router.get('/export', async (req, res) => {
         `;
         const [rows] = await db.query(queryFinal, params);
         const [totales, kpis] = await Promise.all([
-            getTotalesPorMetodo(req.query),
-            getKPIs(req.query)
+            getTotalesPorMetodo(filtros),
+            getKPIs(filtros)
         ]);
 
         // Contar transacciones por método
         let transaccionesPorMetodo = { efectivo: 0, transferencia: 0, tarjeta: 0, qr: 0 };
         try {
+            const whereTx = whereSql
+                ? `${whereSql} AND fp.metodo IN ('efectivo','transferencia','tarjeta','qr')`
+                : `WHERE fp.metodo IN ('efectivo','transferencia','tarjeta','qr')`;
             const sqlTx = `
                 SELECT fp.metodo, COUNT(DISTINCT fp.factura_id) AS num
                 FROM factura_pagos fp
                 JOIN facturas f ON f.id = fp.factura_id
                 LEFT JOIN clientes c ON f.cliente_id = c.id
-                ${whereSql}
-                WHERE fp.metodo IN ('efectivo','transferencia','tarjeta','qr')
+                ${whereTx}
                 GROUP BY fp.metodo
             `;
             const [txRows] = await db.query(sqlTx, params);
@@ -357,9 +386,9 @@ router.get('/export', async (req, res) => {
         const subInfo = [
             config?.direccion,
             config?.telefono ? `Tel: ${config.telefono}` : null,
-            config?.nit ? `NIT: ${config.nit}` : null
+            config?.nit ? `R.F.C.: ${config.nit}` : null
         ].filter(Boolean).join('  •  ');
-        const rangoTexto = `Período: ${req.query.desde || 'inicio'} → ${req.query.hasta || 'hoy'}${req.query.q ? '  |  Filtro: ' + req.query.q : ''}`;
+        const rangoTexto = `Período: ${filtros.desde} → ${filtros.hasta}${filtros.q ? '  |  Filtro: ' + filtros.q : ''}`;
 
         // ── Workbook ──────────────────────────────────────────────────────────
         const wb = new ExcelJS.Workbook();
