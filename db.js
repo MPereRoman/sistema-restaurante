@@ -41,7 +41,7 @@ async function ensureSchema() {
             await pool.query(
                 `UPDATE productos SET tipo_preparacion = 'bebida'
                  WHERE UPPER(codigo) IN ('CAFE','CHOC','REFR','TEFR')
-                    OR LOWER(nombre) REGEXP 'cafe|café|chocolate|refresco|te |té |agua|jugo|bebida|licuado'`
+                    OR LOWER(TRIM(nombre)) REGEXP '^(cafe|café|chocolate|refresco|te|té|agua|jugo|bebida|licuado)( |$)'`
             );
         }
 
