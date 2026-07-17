@@ -140,7 +140,7 @@ function buildTicketSvg({ factura, detalles, pagos, negocio, mesaNumero, esCuent
 <rect width="100%" height="100%" fill="#fff"/>
 <g fill="#000" font-family="DejaVu Sans, Arial, sans-serif">${layout.elements.join('\n')}</g>
 </svg>`;
-    return { svg, width, height, dataUri: svgDataUri(svg) };
+    return { svg, width, height, feedLines: 6, dataUri: svgDataUri(svg) };
 }
 
 function buildComandaSvg({ pedido, items, negocio, area, paperWidthMm = 58, fontSize = 1 }) {
@@ -181,14 +181,15 @@ function buildComandaSvg({ pedido, items, negocio, area, paperWidthMm = 58, font
     });
     layout.addDivider();
     layout.addText('Fin de comanda', { align: 'center', bold: true });
-    layout.advance(90);
+    // La comanda no necesita tanto papel para corte manual como la factura.
+    layout.advance(45);
 
     const height = Math.ceil(layout.getY());
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
 <rect width="100%" height="100%" fill="#fff"/>
 <g fill="#000" font-family="DejaVu Sans, Arial, sans-serif">${layout.elements.join('\n')}</g>
 </svg>`;
-    return { svg, width, height, dataUri: svgDataUri(svg) };
+    return { svg, width, height, feedLines: 3, dataUri: svgDataUri(svg) };
 }
 
 function execFileBuffer(file, args, timeout = 30000) {
@@ -225,7 +226,8 @@ async function svgToEscPos(ticket) {
             chunks.push(Buffer.from([0x1D, 0x76, 0x30, 0x00, bytesPerRow & 0xFF, (bytesPerRow >> 8) & 0xFF, rows & 0xFF, (rows >> 8) & 0xFF]));
             chunks.push(packed);
         }
-        chunks.push(Buffer.from([0x1B, 0x64, 0x06]));
+        const feedLines = Math.max(1, Math.min(10, Number(ticket.feedLines ?? 6) || 6));
+        chunks.push(Buffer.from([0x1B, 0x64, feedLines]));
         return Buffer.concat(chunks);
     } finally {
         try { fs.unlinkSync(tmpFile); } catch (_) {}

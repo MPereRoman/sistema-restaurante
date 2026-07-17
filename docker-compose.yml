@@ -40,7 +40,9 @@ services:
         condition: service_started
     volumes:
       - restaurante_uploads:/app/public/uploads
-      - /run/cups/cups.sock:/run/cups/cups.sock
+      # Montar el directorio permite que el contenedor vea el socket nuevo si
+      # CUPS se reinicia y recrea cups.sock en la Raspberry.
+      - /run/cups:/run/cups
     networks:
       - backend
       - frontend
