@@ -175,7 +175,7 @@ router.get('/:id/imprimir', async (req, res) => {
             `SELECT f.*, c.nombre as cliente_nombre, c.direccion, c.telefono
              FROM facturas f
              LEFT JOIN clientes c ON f.cliente_id = c.id
-             WHERE f.id = ?`,
+             WHERE f.id = ? AND f.estado = 'pagada'`,
             [factura_id]
         );
 
@@ -244,7 +244,7 @@ router.get('/:id/detalles', async (req, res) => {
         const [facturas] = await db.query(
             'SELECT f.*, c.nombre as cliente_nombre, c.direccion, c.telefono FROM facturas f ' +
             'LEFT JOIN clientes c ON f.cliente_id = c.id ' +
-            'WHERE f.id = ?',
+            "WHERE f.id = ? AND f.estado = 'pagada'",
             [req.params.id]
         );
 
@@ -348,7 +348,7 @@ router.post('/:id/imprimir-servidor', async (req, res) => {
             `SELECT f.*, c.nombre as cliente_nombre, c.direccion, c.telefono
              FROM facturas f
              LEFT JOIN clientes c ON f.cliente_id = c.id
-             WHERE f.id = ?`,
+             WHERE f.id = ? AND f.estado = 'pagada'`,
             [facturaId]
         );
         if (!facturas.length) return res.status(404).json({ error: 'Factura no encontrada' });

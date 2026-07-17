@@ -56,10 +56,13 @@ CREATE TABLE IF NOT EXISTS clientes (
 CREATE TABLE IF NOT EXISTS facturas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     cliente_id INT,
+    pedido_id INT NULL,
     fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     total DECIMAL(10,2) NOT NULL,
     -- forma_pago se mantiene por compatibilidad (reportes/ventas), pero si hay varios pagos se guarda como 'mixto'
     forma_pago ENUM('efectivo', 'transferencia', 'tarjeta', 'qr', 'mixto') NOT NULL DEFAULT 'efectivo',
+    estado ENUM('borrador', 'pagada') NOT NULL DEFAULT 'pagada',
+    UNIQUE KEY uq_facturas_pedido (pedido_id),
     FOREIGN KEY (cliente_id) REFERENCES clientes(id)
 );
 

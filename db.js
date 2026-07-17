@@ -28,6 +28,19 @@ async function ensureSchema() {
         await pool.query(`ALTER TABLE mesas ADD COLUMN IF NOT EXISTS activa TINYINT(1) NOT NULL DEFAULT 1 AFTER estado`);
         await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS numero_personas INT NOT NULL DEFAULT 1 AFTER mesero_nombre`);
         await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pagos_borrador LONGTEXT NULL AFTER numero_personas`);
+        await pool.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pedido_id INT NULL AFTER cliente_id`);
+        await pool.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS estado ENUM('borrador','pagada') NOT NULL DEFAULT 'pagada' AFTER forma_pago`);
+
+        const [facturaPedidoIndexes] = await pool.query(
+            `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'facturas'
+               AND INDEX_NAME = 'uq_facturas_pedido'
+             LIMIT 1`
+        );
+        if (!facturaPedidoIndexes.length) {
+            await pool.query(`ALTER TABLE facturas ADD UNIQUE KEY uq_facturas_pedido (pedido_id)`);
+        }
 
         const [rolCols] = await pool.query(
             `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS

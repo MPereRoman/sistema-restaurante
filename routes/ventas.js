@@ -24,7 +24,8 @@ function getCurrentWeekRange() {
  * - routes/ventas.js (listado y export)
  */
 function buildVentasWhere(queryParams) {
-    const where = [];
+    // Una cuenta impresa ya tiene folio, pero no es venta hasta liberar la mesa.
+    const where = ["f.estado = 'pagada'"];
     const params = [];
 
     if (queryParams.desde && queryParams.hasta) {

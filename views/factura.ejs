@@ -263,6 +263,8 @@
         (function () {
             const btn = document.getElementById('btnImprimirServidor');
             const estado = document.getElementById('estadoImpresionServidor');
+            const esCuentaActual = <%- JSON.stringify(esCuentaActual) %>;
+            const folioVisible = <%- JSON.stringify(String(factura.id)) %>;
             if (!btn) return;
 
             btn.addEventListener('click', async function () {
@@ -282,6 +284,9 @@
                         estado.textContent = data.duplicate_suppressed
                             ? 'Este mismo comprobante ya estaba en la cola; no se envió una copia duplicada.'
                             : `Enviado a ${data.impresora || 'POS5890Z'} (${data.copias || 1} copia/s${data.job_id ? `, trabajo ${data.job_id}` : ''}).`;
+                    }
+                    if (esCuentaActual && folioVisible === 'Pendiente' && data.factura_id) {
+                        window.setTimeout(() => window.location.reload(), 900);
                     }
                 } catch (error) {
                     if (estado) {

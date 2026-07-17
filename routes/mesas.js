@@ -1195,6 +1195,65 @@ async function accionesPostPagoMesa({ pagos }) {
     return result;
 }
 
+async function reemplazarContenidoFactura(connection, facturaId, items, pagos) {
+    await connection.query('DELETE FROM detalle_factura WHERE factura_id = ?', [facturaId]);
+    await connection.query('DELETE FROM factura_pagos WHERE factura_id = ?', [facturaId]);
+    await connection.query(
+        `INSERT INTO detalle_factura (factura_id, producto_id, cantidad, precio_unitario, unidad_medida, subtotal) VALUES ?`,
+        [items.map(item => [facturaId, item.producto_id, item.cantidad, item.precio_unitario, item.unidad_medida, item.subtotal])]
+    );
+    await connection.query(
+        'INSERT INTO factura_pagos (factura_id, metodo, monto, referencia) VALUES ?',
+        [pagos.map(pago => [facturaId, pago.metodo, pago.monto, pago.referencia])]
+    );
+}
+
+// Reserva el folio al imprimir por primera vez, sin convertir todavía la cuenta en venta.
+async function reservarFolioCuenta({ pedidoId, total, formaPago, items, pagos, borrador }) {
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [pedidoLock] = await connection.query('SELECT id FROM pedidos WHERE id = ? FOR UPDATE', [pedidoId]);
+        if (!pedidoLock.length) throw new Error('Pedido no encontrado');
+
+        const [existentes] = await connection.query(
+            `SELECT id, fecha, estado FROM facturas WHERE pedido_id = ? LIMIT 1 FOR UPDATE`,
+            [pedidoId]
+        );
+        let facturaId;
+        let fecha;
+        if (existentes.length) {
+            if (existentes[0].estado !== 'borrador') throw new Error('La factura de este pedido ya fue pagada');
+            facturaId = existentes[0].id;
+            fecha = existentes[0].fecha;
+            await connection.query(
+                `UPDATE facturas SET total = ?, forma_pago = ? WHERE id = ?`,
+                [total, formaPago, facturaId]
+            );
+        } else {
+            const [insert] = await connection.query(
+                `INSERT INTO facturas (cliente_id, pedido_id, total, forma_pago, estado)
+                 VALUES (NULL, ?, ?, ?, 'borrador')`,
+                [pedidoId, total, formaPago]
+            );
+            facturaId = insert.insertId;
+            const [creadas] = await connection.query('SELECT fecha FROM facturas WHERE id = ?', [facturaId]);
+            fecha = creadas[0]?.fecha || new Date();
+        }
+
+        await reemplazarContenidoFactura(connection, facturaId, items, pagos);
+        const borradorConFolio = { ...borrador, factura_id: facturaId };
+        await connection.query('UPDATE pedidos SET pagos_borrador = ? WHERE id = ?', [JSON.stringify(borradorConFolio), pedidoId]);
+        await connection.commit();
+        return { id: facturaId, fecha };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+}
+
 // Prepara una cuenta provisional sin registrar la venta ni liberar la mesa.
 router.post('/pedidos/:pedidoId/facturar', async (req, res) => {
     try {
@@ -1247,7 +1306,16 @@ router.get('/pedidos/:pedidoId/cuenta', async (req, res) => {
         const [configRows] = await db.query('SELECT * FROM configuracion_impresion LIMIT 1');
         const config = configRows?.[0] || { ancho_papel: 80, font_size: 1 };
         if (config.logo_data) config.logo_src = `data:image/${config.logo_tipo};base64,${Buffer.from(config.logo_data).toString('base64')}`;
-        const facturaCuenta = { id: 'Pendiente', fecha: new Date(), total: totalActual, forma_pago: borrador.forma_pago };
+        const [folios] = await db.query(
+            `SELECT id, fecha FROM facturas WHERE pedido_id = ? AND estado = 'borrador' LIMIT 1`,
+            [pedidoId]
+        );
+        const facturaCuenta = {
+            id: folios[0]?.id || 'Pendiente',
+            fecha: folios[0]?.fecha || new Date(),
+            total: totalActual,
+            forma_pago: borrador.forma_pago
+        };
         const ticket = buildTicketSvg({
             factura: facturaCuenta,
             detalles,
@@ -1315,8 +1383,16 @@ router.post('/pedidos/:pedidoId/cuenta/imprimir-servidor', async (req, res) => {
         const config = configRows?.[0] || {};
         const printerName = resolvePrinterName(config?.impresora_facturas);
         const pagosCuenta = normalizarPagosCuenta(borrador.pagos);
+        const folio = await reservarFolioCuenta({
+            pedidoId,
+            total: totalActual,
+            formaPago: formaPagoDesdePagos(pagosCuenta),
+            items: detalles,
+            pagos: pagosCuenta,
+            borrador
+        });
         const ticket = buildTicketSvg({
-            factura: { id: 'Pendiente', fecha: new Date(), total: totalActual, forma_pago: borrador.forma_pago },
+            factura: { id: folio.id, fecha: folio.fecha, total: totalActual, forma_pago: borrador.forma_pago },
             detalles,
             pagos: pagosCuenta,
             negocio: config,
@@ -1337,6 +1413,7 @@ router.post('/pedidos/:pedidoId/cuenta/imprimir-servidor', async (req, res) => {
             printed: true,
             impresora: printerName,
             copias,
+            factura_id: folio.id,
             job_id: jobs[0]?.job_id || null,
             duplicate_suppressed: jobs.every(job => job?.duplicate_suppressed)
         });
@@ -1378,18 +1455,27 @@ router.post('/pedidos/:pedidoId/pagado', async (req, res) => {
         const sumaPagos = pagos.reduce((sum, pago) => sum + Number(pago.monto || 0), 0);
         if (sumaPagos < total - 0.01) throw new Error('La suma de pagos no cubre el total');
         const formaPago = formaPagoDesdePagos(pagos);
-        const [facturaInsert] = await connection.query(
-            `INSERT INTO facturas (cliente_id, total, forma_pago) VALUES (NULL, ?, ?)`, [total, formaPago]
+        const [folios] = await connection.query(
+            `SELECT id, estado FROM facturas WHERE pedido_id = ? LIMIT 1 FOR UPDATE`,
+            [pedidoId]
         );
-        const facturaId = facturaInsert.insertId;
-        await connection.query(
-            `INSERT INTO detalle_factura (factura_id, producto_id, cantidad, precio_unitario, unidad_medida, subtotal) VALUES ?`,
-            [items.map(i => [facturaId, i.producto_id, i.cantidad, i.precio_unitario, i.unidad_medida, i.subtotal])]
-        );
-        await connection.query(
-            'INSERT INTO factura_pagos (factura_id, metodo, monto, referencia) VALUES ?',
-            [pagos.map(p => [facturaId, p.metodo, p.monto, p.referencia])]
-        );
+        let facturaId;
+        if (folios.length) {
+            if (folios[0].estado !== 'borrador') throw new Error('La factura de este pedido ya fue pagada');
+            facturaId = folios[0].id;
+            await connection.query(
+                `UPDATE facturas SET total = ?, forma_pago = ?, estado = 'pagada' WHERE id = ?`,
+                [total, formaPago, facturaId]
+            );
+        } else {
+            const [facturaInsert] = await connection.query(
+                `INSERT INTO facturas (cliente_id, pedido_id, total, forma_pago, estado)
+                 VALUES (NULL, ?, ?, ?, 'pagada')`,
+                [pedidoId, total, formaPago]
+            );
+            facturaId = facturaInsert.insertId;
+        }
+        await reemplazarContenidoFactura(connection, facturaId, items, pagos);
         await connection.query(`UPDATE pedidos SET estado = 'cerrado', total = ?, pagos_borrador = NULL WHERE id = ?`, [total, pedidoId]);
         await connection.query(`UPDATE mesas SET estado = 'libre' WHERE id = ?`, [pedido.mesa_id]);
         await connection.commit();
