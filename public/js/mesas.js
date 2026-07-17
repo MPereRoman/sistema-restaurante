@@ -1390,8 +1390,18 @@ $(function() {
       const r = await fetch(`/api/mesas/pedidos/${encodeURIComponent(pedidoId)}/pagado?json=1`, { method:'POST', headers:{'Accept':'application/json'} });
       const data = await r.json().catch(() => ({}));
       if(!r.ok) throw new Error(data.error || 'No se pudo confirmar el pago');
-      await Swal.fire({ icon:'success', title:'Pago confirmado', text:'La mesa quedó liberada.' });
+      const avisos = [];
+      if (data.cash_drawer_opened) avisos.push('Cajón abierto.');
+      if (data.cash_drawer_error) avisos.push(`Cajón: ${data.cash_drawer_error}`);
+      if (data.printed) avisos.push('Factura impresa.');
+      if (data.print_error) avisos.push(`Impresión: ${data.print_error}`);
+      await Swal.fire({
+        icon: data.cash_drawer_error || data.print_error ? 'warning' : 'success',
+        title:'Pago confirmado',
+        text: ['La mesa quedó liberada.', ...avisos].join(' ')
+      });
       location.reload();
+      return;
     }catch(err){ Swal.fire({ icon:'error', title: err.message }); }
   }
 

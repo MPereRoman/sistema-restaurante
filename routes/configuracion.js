@@ -3,10 +3,9 @@ const router = express.Router();
 const db = require('../db');
 const multer = require('multer');
 const os = require('os');
-const fs = require('fs');
-const path = require('path');
 const { exec } = require('child_process');
 const QRCode = require('qrcode');
+const { openCashDrawer, printText, resolvePrinterName } = require('../services/printer');
 
 // Configuración de multer para memoria
 const upload = multer({
@@ -227,81 +226,6 @@ router.get('/impresoras', (req, res) => {
     });
 });
 
-function execCommand(command) {
-    return new Promise((resolve, reject) => {
-        exec(command, { timeout: 20000 }, (error, stdout, stderr) => {
-            if (error) return reject(new Error(String(stderr || error.message || 'Error al ejecutar impresion')));
-            resolve({ stdout, stderr });
-        });
-    });
-}
-
-// Construye el script PowerShell que usa System.Drawing.Printing.PrintDocument
-// para fijar el tamaño del papel térmico.
-// Misma lógica que buildThermalPsScript en routes/mesas.js y routes/facturas.js
-function buildThermalPsScript(psPath, psPrinter, anchoMm, fontSize) {
-    const widthH = Math.round(Number(anchoMm || 80) * 100 / 25.4);
-    // Bold + tamaño mayor para comanda de prueba → misma mejora que en routes/mesas.js
-    const pt     = Number(fontSize || 1) === 2 ? '12' : '10';
-    const lines  = [
-        'Add-Type -AssemblyName System.Drawing',
-        "$script:ls = [System.IO.File]::ReadAllLines('" + psPath + "', [System.Text.Encoding]::UTF8)",
-        '$script:i = 0',
-        '$pd = New-Object System.Drawing.Printing.PrintDocument',
-    ];
-    if (psPrinter) lines.push("$pd.PrinterSettings.PrinterName = '" + psPrinter + "'");
-    lines.push(
-        '$ps = New-Object System.Drawing.Printing.PaperSize("ThermalTicket", ' + widthH + ', 2000)',
-        '$pd.DefaultPageSettings.PaperSize = $ps',
-        '$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(10, 10, 10, 0)',
-        '$script:fn = New-Object System.Drawing.Font("Courier New", ' + pt + ', [System.Drawing.FontStyle]::Bold)',
-        '$pd.add_PrintPage({',
-        '    param($s, $e)',
-        '    $y = [float]0',
-        '    $lh = [float]$script:fn.GetHeight($e.Graphics)',
-        '    while ($script:i -lt $script:ls.Length) {',
-        '        $e.Graphics.DrawString($script:ls[$script:i], $script:fn, [System.Drawing.Brushes]::Black, [float]0, $y)',
-        '        $y += $lh',
-        '        $script:i++',
-        '        if (($y + $lh) -gt [float]$e.MarginBounds.Height) { $e.HasMorePages = ($script:i -lt $script:ls.Length); break }',
-        '    }',
-        '})',
-        '$pd.Print()',
-        '$script:fn.Dispose()',
-        '$pd.Dispose()'
-    );
-    return lines.join('\r\n');
-}
-
-// Imprime texto plano en la impresora del servidor (prueba de comanda).
-// Usa System.Drawing.Printing para fijar el tamaño del papel térmico.
-// Relacionado con: POST /impresion/comanda-prueba
-async function imprimirTextoServidor(texto, impresoraNombre, anchoPapelMm, fontSize) {
-    const tmpFile = path.join(
-        os.tmpdir(),
-        `comanda-prueba-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`
-    );
-    const bom  = Buffer.from([0xEF, 0xBB, 0xBF]);
-    const body = Buffer.from(String(texto || ''), 'utf8');
-    fs.writeFileSync(tmpFile, Buffer.concat([bom, body]));
-    try {
-        if (process.platform === 'win32') {
-            const psPath    = tmpFile.replace(/'/g, "''");
-            const psPrinter = String(impresoraNombre || '').trim().replace(/'/g, "''");
-            const psScript  = buildThermalPsScript(psPath, psPrinter, anchoPapelMm, fontSize);
-            const encoded   = Buffer.from(psScript, 'utf16le').toString('base64');
-            await execCommand('powershell -NoProfile -NonInteractive -EncodedCommand ' + encoded);
-            return;
-        }
-        // Linux / macOS — CUPS
-        const quoted = '"' + tmpFile.replace(/"/g, '\\"') + '"';
-        const p      = String(impresoraNombre || '').trim();
-        await execCommand(p ? 'lp -d "' + p.replace(/"/g, '\\"') + '" ' + quoted : 'lp ' + quoted);
-    } finally {
-        try { fs.unlinkSync(tmpFile); } catch (_) {}
-    }
-}
-
 // POST /configuracion/impresion/comanda-prueba
 // Imprime una comanda de prueba desde el servidor (PC), sin navegador móvil.
 router.post('/impresion/comanda-prueba', async (req, res) => {
@@ -310,7 +234,11 @@ router.post('/impresion/comanda-prueba', async (req, res) => {
         const cfg       = rows?.[0] || {};
         const negocio   = String(cfg?.nombre_negocio || 'MI NEGOCIO');
         const area       = String(req.body?.area || 'alimento').toLowerCase() === 'bebida' ? 'bebida' : 'alimento';
-        const impresora = String(area === 'bebida' ? (cfg?.impresora_comandas_barra || cfg?.impresora_comandas || '') : (cfg?.impresora_comandas || '')).trim() || null;
+        const impresora = resolvePrinterName(
+            area === 'bebida'
+                ? (cfg?.impresora_comandas_barra || cfg?.impresora_comandas)
+                : cfg?.impresora_comandas
+        );
         const anchoPapel = Number(cfg?.ancho_papel || 80);
         const fontSize   = Number(cfg?.font_size   || 1);
 
@@ -329,8 +257,14 @@ router.post('/impresion/comanda-prueba', async (req, res) => {
             'Fin de prueba'
         ].join('\r\n');
 
-        await imprimirTextoServidor(texto, impresora, anchoPapel, fontSize);
-        res.json({ ok: true, impresora: impresora || 'predeterminada' });
+        await printText(texto, {
+            printerName: impresora,
+            paperWidthMm: anchoPapel,
+            fontSize,
+            bold: true,
+            jobPrefix: 'comanda-prueba'
+        });
+        res.json({ ok: true, impresora });
     } catch (error) {
         console.error('Error al imprimir comanda de prueba:', error);
         res.status(500).json({ error: 'No se pudo imprimir la comanda de prueba en servidor' });
@@ -341,6 +275,18 @@ router.post('/impresion/comanda-prueba', async (req, res) => {
 // Relacionado con:
 // - views/configuracion.ejs (apartado "Vincular dispositivos")
 // - middleware/auth.js + server.js (solo administrador accede a esta sección)
+
+router.post('/impresion/cajon-prueba', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT impresora_facturas FROM configuracion_impresion LIMIT 1');
+        const impresora = resolvePrinterName(rows?.[0]?.impresora_facturas);
+        await openCashDrawer(impresora);
+        res.json({ ok: true, impresora });
+    } catch (error) {
+        console.error('Error al abrir cajón de prueba:', error);
+        res.status(500).json({ error: 'No se pudo abrir el cajón' });
+    }
+});
 
 function getIpv4Locales() {
     // Obtiene IPs IPv4 válidas para LAN (evita loopback/internas no útiles)

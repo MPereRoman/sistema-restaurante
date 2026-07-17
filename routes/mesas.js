@@ -1,10 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { exec } = require('child_process');
+const { openCashDrawer, printText, resolvePrinterName } = require('../services/printer');
 
 // Rutas para gestión de mesas y pedidos de restaurante
 // - Renderiza la vista de mesas (GET /mesas)
@@ -113,90 +110,18 @@ function buildComandaTexto({ pedido, items, negocio, area }) {
     return lines.join('\r\n');
 }
 
-function execCommand(command) {
-    return new Promise((resolve, reject) => {
-        exec(command, { timeout: 25000 }, (error, stdout, stderr) => {
-            if (error) return reject(new Error(String(stderr || error.message || 'Error al ejecutar comando de impresión')));
-            resolve({ stdout, stderr });
-        });
-    });
-}
-
-// Construye el script PowerShell que usa System.Drawing.Printing.PrintDocument
-// para imprimir en papel térmico con el tamaño de papel correcto.
-// SIN esto, Out-Printer usa carta/A4 y el texto queda microscópico en papel de 80mm.
-// Relacionado con: imprimirTextoEnServidor (abajo), imprimirTextoServidor en facturas.js
-function buildThermalPsScript(psPath, psPrinter, anchoMm, fontSize) {
-    // 1 pulgada = 25.4 mm. PaperSize trabaja en centésimas de pulgada.
-    const widthH = Math.round(Number(anchoMm || 80) * 100 / 25.4);
-    // Fuente monoespaciada en negrita; tamaño depende de config (1=10pt normal, 2=12pt grande).
-    // Bold mejora la legibilidad en papel térmico de cocina (trazo más oscuro y grueso).
-    const pt = Number(fontSize || 1) === 2 ? '12' : '10';
-
-    const lines = [
-        'Add-Type -AssemblyName System.Drawing',
-        "$script:ls = [System.IO.File]::ReadAllLines('" + psPath + "', [System.Text.Encoding]::UTF8)",
-        '$script:i = 0',
-        '$pd = New-Object System.Drawing.Printing.PrintDocument',
-    ];
-    if (psPrinter) {
-        lines.push("$pd.PrinterSettings.PrinterName = '" + psPrinter + "'");
-    }
-    lines.push(
-        '$ps = New-Object System.Drawing.Printing.PaperSize("ThermalTicket", ' + widthH + ', 2000)',
-        '$pd.DefaultPageSettings.PaperSize = $ps',
-        '$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(10, 10, 10, 0)',
-        // FontStyle::Bold → trazo más grueso y oscuro en papel térmico de cocina
-        '$script:fn = New-Object System.Drawing.Font("Courier New", ' + pt + ', [System.Drawing.FontStyle]::Bold)',
-        '$pd.add_PrintPage({',
-        '    param($s, $e)',
-        '    $y = [float]0',
-        '    $lh = [float]$script:fn.GetHeight($e.Graphics)',
-        '    while ($script:i -lt $script:ls.Length) {',
-        '        $e.Graphics.DrawString($script:ls[$script:i], $script:fn, [System.Drawing.Brushes]::Black, [float]0, $y)',
-        '        $y += $lh',
-        '        $script:i++',
-        '        if (($y + $lh) -gt [float]$e.MarginBounds.Height) { $e.HasMorePages = ($script:i -lt $script:ls.Length); break }',
-        '    }',
-        '})',
-        '$pd.Print()',
-        '$script:fn.Dispose()',
-        '$pd.Dispose()'
-    );
-    return lines.join('\r\n');
-}
-
 // Imprime texto plano en la impresora del servidor (comanda).
 // anchoPapelMm: ancho del rollo térmico en mm (58 o 80), viene de configuracion_impresion.
 // fontSize: 1=normal, 2=grande (idem config).
 // Relacionado con: POST /pedidos/:id/comanda/imprimir-servidor
 async function imprimirTextoEnServidor(texto, impresoraNombre, anchoPapelMm, fontSize) {
-    const tmpFile = path.join(
-        os.tmpdir(),
-        `comanda-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`
-    );
-    // BOM UTF-8 para que ReadAllLines de .NET lo lea correctamente en Windows
-    const bom  = Buffer.from([0xEF, 0xBB, 0xBF]);
-    const body = Buffer.from(String(texto || ''), 'utf8');
-    fs.writeFileSync(tmpFile, Buffer.concat([bom, body]));
-
-    try {
-        if (process.platform === 'win32') {
-            const psPath    = tmpFile.replace(/'/g, "''");
-            const psPrinter = String(impresoraNombre || '').trim().replace(/'/g, "''");
-            const psScript  = buildThermalPsScript(psPath, psPrinter, anchoPapelMm, fontSize);
-            // EncodedCommand (Base64 UTF-16LE) evita problemas de encoding en cmd.exe
-            const encoded   = Buffer.from(psScript, 'utf16le').toString('base64');
-            await execCommand('powershell -NoProfile -NonInteractive -EncodedCommand ' + encoded);
-            return;
-        }
-        // Linux / macOS — CUPS
-        const quoted = '"' + tmpFile.replace(/"/g, '\\"') + '"';
-        const p      = String(impresoraNombre || '').trim();
-        await execCommand(p ? 'lp -d "' + p.replace(/"/g, '\\"') + '" ' + quoted : 'lp ' + quoted);
-    } finally {
-        try { fs.unlinkSync(tmpFile); } catch (_) {}
-    }
+    return printText(texto, {
+        printerName: impresoraNombre,
+        paperWidthMm: anchoPapelMm,
+        fontSize,
+        bold: true,
+        jobPrefix: 'comanda'
+    });
 }
 
 // GET /mesas - Página de gestión de mesas
@@ -1192,6 +1117,106 @@ function firmaItemsCuenta(items) {
     ]).sort((a, b) => a[0] - b[0]);
 }
 
+function pagosIncluyenEfectivo(pagos) {
+    return (pagos || []).some(p =>
+        String(p?.metodo || '').toLowerCase().trim() === 'efectivo' &&
+        Number(p?.monto || 0) > 0
+    );
+}
+
+function buildFacturaMesaTexto({ factura, detalles, pagos, negocio, mesaNumero }) {
+    const line = '-'.repeat(32);
+    const out = [];
+    out.push(String(negocio?.nombre_negocio || 'BISTRO CIENTO44'));
+    if (negocio?.direccion) out.push(String(negocio.direccion));
+    if (negocio?.telefono) out.push(`Tel: ${negocio.telefono}`);
+    if (negocio?.nit) out.push(`R.F.C.: ${negocio.nit}`);
+    out.push(line);
+    out.push(`Factura #: ${factura?.id ?? '-'}`);
+    if (mesaNumero) out.push(`Mesa: ${mesaNumero}`);
+    out.push(`Fecha: ${new Date(factura?.fecha || Date.now()).toLocaleString('es-CO')}`);
+    out.push(line);
+    (detalles || []).forEach((d) => {
+        out.push(String(d?.producto_nombre || ''));
+        out.push(`${Number(d?.cantidad || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}  $${Number(d?.precio_unitario || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}  $${Number(d?.subtotal || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
+    });
+    out.push(line);
+    out.push(`Total: $${Number(factura?.total || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
+    if (Array.isArray(pagos) && pagos.length > 0) {
+        out.push('Pagos:');
+        pagos.forEach((p) => {
+            const metodo = String(p?.metodo || '').trim();
+            const ref = String(p?.referencia || '').trim();
+            out.push(`${metodo}: $${Number(p?.monto || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}${ref ? ` (${ref})` : ''}`);
+        });
+    }
+    out.push(line);
+    out.push(String(negocio?.pie_pagina || 'Gracias por su compra'));
+    out.push('\n\n');
+    return out.join('\r\n');
+}
+
+async function accionesPostPagoMesa({ facturaId, pagos, mesaNumero }) {
+    const result = {
+        cash_drawer_opened: false,
+        cash_drawer_error: null,
+        printed: false,
+        print_error: null
+    };
+
+    const [configRows] = await db.query('SELECT * FROM configuracion_impresion LIMIT 1');
+    const config = configRows?.[0] || {};
+    const printerName = resolvePrinterName(config?.impresora_facturas);
+    const anchoPapel = Number(config?.ancho_papel || 58);
+    const fontSize = Number(config?.font_size || 1);
+
+    // El cajón se acciona inmediatamente después de confirmar la venta, pero
+    // únicamente cuando al menos una parte del pago fue en efectivo.
+    if (pagosIncluyenEfectivo(pagos)) {
+        try {
+            await openCashDrawer(printerName);
+            result.cash_drawer_opened = true;
+        } catch (error) {
+            result.cash_drawer_error = String(error?.message || error || 'No se pudo abrir el cajón');
+            console.error('Error al abrir cajón:', error);
+        }
+    }
+
+    if (Number(config?.factura_imprime_servidor || 0) === 1) {
+        try {
+            const [facturas] = await db.query('SELECT * FROM facturas WHERE id = ? LIMIT 1', [facturaId]);
+            const [detalles] = await db.query(
+                `SELECT d.*, p.nombre AS producto_nombre
+                 FROM detalle_factura d
+                 JOIN productos p ON p.id = d.producto_id
+                 WHERE d.factura_id = ?
+                 ORDER BY d.id`,
+                [facturaId]
+            );
+            const texto = buildFacturaMesaTexto({
+                factura: facturas?.[0] || { id: facturaId },
+                detalles,
+                pagos,
+                negocio: config,
+                mesaNumero
+            });
+            await printText(texto, {
+                printerName,
+                copies: Math.max(1, Number(config?.factura_copias || 1) || 1),
+                paperWidthMm: anchoPapel,
+                fontSize,
+                jobPrefix: 'factura-mesa'
+            });
+            result.printed = true;
+        } catch (error) {
+            result.print_error = String(error?.message || error || 'No se pudo imprimir la factura');
+            console.error('Error al imprimir factura final de mesa:', error);
+        }
+    }
+
+    return result;
+}
+
 // Prepara una cuenta provisional sin registrar la venta ni liberar la mesa.
 router.post('/pedidos/:pedidoId/facturar', async (req, res) => {
     try {
@@ -1263,7 +1288,14 @@ router.post('/pedidos/:pedidoId/pagado', async (req, res) => {
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        const [pedidos] = await connection.query('SELECT * FROM pedidos WHERE id = ? FOR UPDATE', [pedidoId]);
+        const [pedidos] = await connection.query(
+            `SELECT p.*, m.numero AS mesa_numero
+             FROM pedidos p
+             JOIN mesas m ON m.id = p.mesa_id
+             WHERE p.id = ?
+             FOR UPDATE`,
+            [pedidoId]
+        );
         if (!pedidos.length) throw new Error('Pedido no encontrado');
         const pedido = pedidos[0];
         if (['cerrado', 'cancelado', 'rechazado'].includes(String(pedido.estado || '').toLowerCase())) throw new Error('El pedido ya está cerrado');
@@ -1297,7 +1329,32 @@ router.post('/pedidos/:pedidoId/pagado', async (req, res) => {
         await connection.query(`UPDATE pedidos SET estado = 'cerrado', total = ?, pagos_borrador = NULL WHERE id = ?`, [total, pedidoId]);
         await connection.query(`UPDATE mesas SET estado = 'libre' WHERE id = ?`, [pedido.mesa_id]);
         await connection.commit();
-        if (req.query.json === '1') return res.json({ message: 'Pago confirmado y mesa liberada', factura_id: facturaId });
+
+        let postPago = {};
+        try {
+            postPago = await accionesPostPagoMesa({
+                facturaId,
+                pagos,
+                mesaNumero: pedido.mesa_numero
+            });
+        } catch (postError) {
+            const mensaje = String(postError?.message || postError || 'Error posterior al pago');
+            postPago = {
+                cash_drawer_opened: false,
+                cash_drawer_error: pagosIncluyenEfectivo(pagos) ? mensaje : null,
+                printed: false,
+                print_error: mensaje
+            };
+            console.error('Error posterior al pago:', postError);
+        }
+
+        if (req.query.json === '1') {
+            return res.json({
+                message: 'Pago confirmado y mesa liberada',
+                factura_id: facturaId,
+                ...postPago
+            });
+        }
         res.redirect('/mesas?venta=pagada');
     } catch (error) {
         await connection.rollback();

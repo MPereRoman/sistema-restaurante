@@ -520,6 +520,11 @@
                             </div>
                             <div id="estadoImpresoraFacturas" class="small mt-1"></div>
                         </div>
+                        <div class="col-md-3">
+                            <button type="button" class="btn btn-outline-dark w-100" id="btnAbrirCajonPrueba">
+                                <i class="bi bi-cash-coin me-1"></i>Probar cajón
+                            </button>
+                        </div>
                         <div class="col-md-2">
                             <label class="form-label fw-semibold">Copias</label>
                             <input type="number" min="1" max="5" class="form-control"
@@ -797,6 +802,41 @@
                 btn.innerHTML = old;
             }
           });
+        });
+    })();
+
+    (function initCajonPrueba() {
+        var btn = document.getElementById('btnAbrirCajonPrueba');
+        var res = document.getElementById('resultadoTestComanda');
+        if (!btn) return;
+        btn.addEventListener('click', async function () {
+            var old = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Abriendo...';
+            if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+            try {
+                var resp = await fetch('/configuracion/impresion/cajon-prueba', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                var data = await resp.json().catch(function () { return {}; });
+                if (!resp.ok) throw new Error(data.error || 'No se pudo abrir el cajón');
+                if (res) {
+                    res.style.display = 'block';
+                    res.innerHTML = '<div class="alert alert-success py-2 px-3 small mb-0">'
+                        + '<i class="bi bi-check-circle me-1"></i>'
+                        + 'Pulso enviado a: <strong>' + (data.impresora || 'POS5890Z') + '</strong></div>';
+                }
+            } catch (e) {
+                if (res) {
+                    res.style.display = 'block';
+                    res.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">'
+                        + '<i class="bi bi-x-circle me-1"></i>' + String(e.message || e) + '</div>';
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = old;
+            }
         });
     })();
 

@@ -34,11 +34,13 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en Portainer}
       DB_NAME: reconocimiento
       SESSION_SECRET: ${SESSION_SECRET:?Define SESSION_SECRET en Portainer}
+      POS_PRINTER: ${POS_PRINTER:-POS5890Z}
     depends_on:
       db:
         condition: service_started
     volumes:
       - restaurante_uploads:/app/public/uploads
+      - /run/cups/cups.sock:/run/cups/cups.sock
     networks:
       - backend
       - frontend
