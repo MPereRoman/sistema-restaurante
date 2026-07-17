@@ -62,6 +62,10 @@ async function ensureSchema() {
             `ALTER TABLE configuracion_impresion
              ADD COLUMN IF NOT EXISTS impresora_comandas_barra VARCHAR(150) NULL AFTER impresora_comandas`
         );
+        await pool.query(
+            `ALTER TABLE configuracion_impresion
+             ADD COLUMN IF NOT EXISTS datos_transferencia VARCHAR(255) NULL AFTER pie_pagina`
+        );
 
         // Tabla de pagos por factura (pago mixto) — con soporte para QR
         await pool.query(`

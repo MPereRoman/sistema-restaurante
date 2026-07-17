@@ -20,6 +20,18 @@ function money(value) {
     return Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
+function capitalize(value) {
+    const text = String(value == null ? '' : value).trim().toLocaleLowerCase('es-MX');
+    return text ? text.charAt(0).toLocaleUpperCase('es-MX') + text.slice(1) : '';
+}
+
+function formatDateTime(value) {
+    const date = new Date(value || Date.now());
+    const pad = number => String(number).padStart(2, '0');
+    if (Number.isNaN(date.getTime())) return '';
+    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function wrapText(value, maxChars) {
     const words = String(value == null ? '' : value).trim().split(/\s+/).filter(Boolean);
     if (!words.length) return [''];
@@ -86,61 +98,69 @@ function layoutFactory(width, baseFont) {
     return { addText, addDivider, addImage, addRaw, advance, elements, getY: () => y, margin, usable };
 }
 
-function buildTicketSvg({ factura, detalles, pagos, negocio, mesaNumero, esCuenta = false, paperWidthMm = 58, fontSize = 1 }) {
+function buildTicketSvg({ factura, detalles, pagos, negocio, mesaNumero, paperWidthMm = 58, fontSize = 1 }) {
     const width = Number(paperWidthMm || 58) <= 58 ? 384 : 576;
     const baseFont = Number(fontSize || 1) === 2 ? 27 : 23;
     const layout = layoutFactory(width, baseFont);
     const logo = imageDataUri(negocio?.logo_data, negocio?.logo_tipo);
-    const qr = imageDataUri(negocio?.qr_data, negocio?.qr_tipo);
     const incluyeTransferencia = String(factura?.forma_pago || '').toLowerCase() === 'transferencia' ||
         (pagos || []).some(p => String(p?.metodo || '').toLowerCase() === 'transferencia');
+    const datosTransferencia = String(negocio?.datos_transferencia || '').trim();
 
-    layout.addImage(logo, Math.min(210, width - 70), 100);
+    layout.addImage(logo, Math.min(420, width - 36), 200);
     layout.addText(negocio?.nombre_negocio || 'BISTRO CIENTO44', { align: 'center', bold: true, size: baseFont + 5 });
     if (negocio?.direccion) layout.addText(negocio.direccion, { align: 'center', size: baseFont - 3 });
     if (negocio?.telefono) layout.addText(`Tel: ${negocio.telefono}`, { align: 'center', size: baseFont - 3 });
     if (negocio?.nit) layout.addText(`R.F.C.: ${negocio.nit}`, { align: 'center', size: baseFont - 3 });
     layout.addDivider();
-    layout.addText(`${esCuenta ? 'CUENTA' : 'Factura #'}: ${factura?.id ?? '-'}`, { bold: true });
+    layout.addText(`Factura #: ${factura?.id ?? '-'}`, { bold: true });
     if (mesaNumero) layout.addText(`Mesa: ${mesaNumero}`, { bold: true });
-    layout.addText(`Fecha: ${new Date(factura?.fecha || Date.now()).toLocaleString('es-MX')}`, { size: baseFont - 3 });
+    layout.addText(`Fecha: ${formatDateTime(factura?.fecha)}`, { size: baseFont - 3 });
     layout.addDivider();
+
+    const unitX = Math.round(width * 0.64);
+    const subtotalX = width - layout.margin;
+    const headerY = layout.getY() + baseFont;
+    layout.addRaw(`<text x="${layout.margin}" y="${headerY}" font-size="${baseFont - 5}" font-weight="700">Cant.</text>`);
+    layout.addRaw(`<text x="${unitX}" y="${headerY}" text-anchor="end" font-size="${baseFont - 5}" font-weight="700">P. unit.</text>`);
+    layout.addRaw(`<text x="${subtotalX}" y="${headerY}" text-anchor="end" font-size="${baseFont - 5}" font-weight="700">Subtotal</text>`);
+    layout.advance(baseFont + 8);
 
     (detalles || []).forEach((item) => {
         layout.addText(item?.producto_nombre || '', { bold: true, after: 2 });
         const y = layout.getY() + baseFont + 5;
         layout.addRaw(`<text x="${layout.margin}" y="${y}" font-size="${baseFont - 2}">${escapeXml(money(item?.cantidad))}</text>`);
-        layout.addRaw(`<text x="${Math.round(width * 0.62)}" y="${y}" text-anchor="end" font-size="${baseFont - 2}">$${escapeXml(money(item?.precio_unitario))}</text>`);
-        layout.addRaw(`<text x="${width - layout.margin}" y="${y}" text-anchor="end" font-size="${baseFont - 2}" font-weight="700">$${escapeXml(money(item?.subtotal))}</text>`);
-        layout.advance(baseFont + 13);
+        layout.addRaw(`<text x="${unitX}" y="${y}" text-anchor="end" font-size="${baseFont - 2}">$${escapeXml(money(item?.precio_unitario))}</text>`);
+        layout.addRaw(`<text x="${subtotalX}" y="${y}" text-anchor="end" font-size="${baseFont - 2}" font-weight="700">$${escapeXml(money(item?.subtotal))}</text>`);
+        layout.advance(baseFont + 10);
     });
 
     layout.addDivider();
     layout.addText(`Total: $${money(factura?.total)}`, { align: 'right', bold: true, size: baseFont + 5, after: 6 });
     if (Array.isArray(pagos) && pagos.length) {
-        layout.addText('Pagos:', { align: 'center', bold: true });
+        layout.addText('Pagos:', { align: 'left', bold: true });
         pagos.forEach((pago) => {
-            const metodo = String(pago?.metodo || '').trim();
+            const metodo = capitalize(pago?.metodo);
             const ref = String(pago?.referencia || '').trim();
-            layout.addText(`${metodo}: $${money(pago?.monto)}${ref ? ` (${ref})` : ''}`, { align: 'center', size: baseFont - 2 });
+            layout.addText(`${metodo}: $${money(pago?.monto)}${ref ? ` (${ref})` : ''}`, { align: 'left', size: baseFont - 2 });
         });
     } else if (factura?.forma_pago) {
-        layout.addText(`Forma de pago: ${factura.forma_pago}`, { align: 'center', size: baseFont - 2 });
+        layout.addText(`Forma de pago: ${capitalize(factura.forma_pago)}`, { align: 'left', size: baseFont - 2 });
     }
-    if (qr && incluyeTransferencia) {
-        layout.addText('Transferencia', { align: 'center', bold: true, after: 4 });
-        layout.addImage(qr, 190, 190);
+    if (datosTransferencia && incluyeTransferencia) {
+        layout.addText('Datos para transferencia', { align: 'left', bold: true, after: 3 });
+        layout.addText(datosTransferencia, { align: 'left', bold: true, size: baseFont - 1 });
     }
     layout.addDivider();
     layout.addText(negocio?.pie_pagina || '¡Gracias por su compra!', { align: 'center', bold: true });
-    layout.advance(95);
+    layout.advance(48);
 
     const height = Math.ceil(layout.getY());
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
 <rect width="100%" height="100%" fill="#fff"/>
 <g fill="#000" font-family="DejaVu Sans, Arial, sans-serif">${layout.elements.join('\n')}</g>
 </svg>`;
-    return { svg, width, height, feedLines: 6, dataUri: svgDataUri(svg) };
+    return { svg, width, height, feedLines: 3, dataUri: svgDataUri(svg) };
 }
 
 function buildComandaSvg({ pedido, items, negocio, area, paperWidthMm = 58, fontSize = 1 }) {
@@ -155,7 +175,7 @@ function buildComandaSvg({ pedido, items, negocio, area, paperWidthMm = 58, font
     layout.addRaw(`<text x="${width - layout.margin}" y="${metaY}" text-anchor="end" font-size="${baseFont - 4}">MESERO</text>`);
     layout.addRaw(`<text x="${width - layout.margin}" y="${metaY + baseFont + 8}" text-anchor="end" font-size="${baseFont}" font-weight="700">${escapeXml(pedido?.mesero_nombre || 'Sin asignar')}</text>`);
     layout.advance((baseFont * 2) + 25);
-    layout.addText(`Pedido #${pedido?.id ?? '-'} · ${new Date().toLocaleString('es-MX')}`, { align: 'center', size: baseFont - 5 });
+    layout.addText(`Pedido #${pedido?.id ?? '-'} · ${formatDateTime()}`, { align: 'center', size: baseFont - 5 });
     layout.addDivider();
     layout.addText(area || 'COMANDA', { align: 'center', bold: true, size: baseFont + 7, after: 6 });
 

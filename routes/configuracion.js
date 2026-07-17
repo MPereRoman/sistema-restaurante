@@ -56,6 +56,7 @@ router.get('/', async (req, res) => {
                     telefono: '',
                     nit: '',
                     pie_pagina: '',
+                    datos_transferencia: '',
                     ancho_papel: 80,
                     font_size: 1,
                     cocina_auto_listo_comanda: 0,
@@ -67,14 +68,12 @@ router.get('/', async (req, res) => {
                     factura_copias: 1,
                     factura_auto_print: 0,
                     // Previsualizadores (vacíos en configuración por defecto)
-                    logo_src: null,
-                    qr_src: null
+                    logo_src: null
                 }
             });
         }
 
-        // Construir previsualización (data URL) si ya hay logo/QR guardados
-        // Relacionado con: views/configuracion.ejs (muestra "Logo actual" y "QR actual")
+        // Construir previsualización del logo guardado.
         const configSinImagenes = { ...config[0] };
         if (configSinImagenes.logo_data) {
             try {
@@ -87,19 +86,7 @@ router.get('/', async (req, res) => {
         } else {
             configSinImagenes.logo_src = null;
         }
-        if (configSinImagenes.qr_data) {
-            try {
-                const qrBuffer = Buffer.from(configSinImagenes.qr_data);
-                const tipo = configSinImagenes.qr_tipo || 'png';
-                configSinImagenes.qr_src = `data:image/${tipo};base64,${qrBuffer.toString('base64')}`;
-            } catch (_) {
-                configSinImagenes.qr_src = null;
-            }
-        } else {
-            configSinImagenes.qr_src = null;
-        }
-
-        // No enviar los datos binarios de las imágenes a la vista (solo logo_src/qr_src)
+        // No enviar datos binarios a la vista.
         delete configSinImagenes.logo_data;
         delete configSinImagenes.qr_data;
 
@@ -112,8 +99,7 @@ router.get('/', async (req, res) => {
 
 // Guardar configuración
 router.post('/', upload.fields([
-    { name: 'logo', maxCount: 1 },
-    { name: 'qr', maxCount: 1 }
+    { name: 'logo', maxCount: 1 }
 ]), async (req, res) => {
     try {
         const {
@@ -122,6 +108,7 @@ router.post('/', upload.fields([
             telefono,
             nit,
             pie_pagina,
+            datos_transferencia,
             ancho_papel,
             font_size,
             cocina_auto_listo_comanda,
@@ -142,6 +129,7 @@ router.post('/', upload.fields([
             telefono || null,
             nit || null,
             pie_pagina || null,
+            String(datos_transferencia || '').trim() || null,
             ancho_papel || 80,
             font_size || 1,
             Number(String(cocina_auto_listo_comanda || '0')) ? 1 : 0,
@@ -159,21 +147,15 @@ router.post('/', upload.fields([
             values.push(req.files.logo[0].buffer);
             values.push(req.files.logo[0].mimetype.split('/')[1]);
         }
-        if (req.files?.qr) {
-            values.push(req.files.qr[0].buffer);
-            values.push(req.files.qr[0].mimetype.split('/')[1]);
-        }
-
         if (!results || results.length === 0) {
             // Insertar nueva configuración
             let sql = `
                 INSERT INTO configuracion_impresion 
-                (nombre_negocio, direccion, telefono, nit, pie_pagina, 
+                (nombre_negocio, direccion, telefono, nit, pie_pagina, datos_transferencia,
                  ancho_papel, font_size, cocina_auto_listo_comanda, cocina_imprime_servidor,
                  impresora_comandas, impresora_comandas_barra, impresora_facturas, factura_imprime_servidor, factura_copias, factura_auto_print
             `;
             if (req.files?.logo) sql += ', logo_data, logo_tipo';
-            if (req.files?.qr) sql += ', qr_data, qr_tipo';
             sql += ') VALUES (' + values.map(() => '?').join(',') + ')';
             
             await db.query(sql, values);
@@ -182,11 +164,10 @@ router.post('/', upload.fields([
             let sql = `
                 UPDATE configuracion_impresion 
                 SET nombre_negocio = ?, direccion = ?, telefono = ?, nit = ?,
-                    pie_pagina = ?, ancho_papel = ?, font_size = ?, cocina_auto_listo_comanda = ?, cocina_imprime_servidor = ?,
+                    pie_pagina = ?, datos_transferencia = ?, ancho_papel = ?, font_size = ?, cocina_auto_listo_comanda = ?, cocina_imprime_servidor = ?,
                     impresora_comandas = ?, impresora_comandas_barra = ?, impresora_facturas = ?, factura_imprime_servidor = ?, factura_copias = ?, factura_auto_print = ?
             `;
             if (req.files?.logo) sql += ', logo_data = ?, logo_tipo = ?';
-            if (req.files?.qr) sql += ', qr_data = ?, qr_tipo = ?';
             sql += ' WHERE id = ?';
             
             values.push(results[0].id);

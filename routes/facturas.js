@@ -170,11 +170,6 @@ router.get('/:id/imprimir', async (req, res) => {
             const logoBuffer = Buffer.from(config.logo_data);
             config.logo_src = `data:image/${config.logo_tipo};base64,${logoBuffer.toString('base64')}`;
         }
-        if (config.qr_data) {
-            const qrBuffer = Buffer.from(config.qr_data);
-            config.qr_src = `data:image/${config.qr_tipo};base64,${qrBuffer.toString('base64')}`;
-        }
-
         // Obtener datos de la factura
         const [facturas] = await db.query(
             `SELECT f.*, c.nombre as cliente_nombre, c.direccion, c.telefono

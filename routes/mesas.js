@@ -1168,7 +1168,7 @@ function pagosIncluyenEfectivo(pagos) {
     );
 }
 
-async function accionesPostPagoMesa({ facturaId, pagos, mesaNumero }) {
+async function accionesPostPagoMesa({ pagos }) {
     const result = {
         cash_drawer_opened: false,
         cash_drawer_error: null,
@@ -1179,8 +1179,6 @@ async function accionesPostPagoMesa({ facturaId, pagos, mesaNumero }) {
     const [configRows] = await db.query('SELECT * FROM configuracion_impresion LIMIT 1');
     const config = configRows?.[0] || {};
     const printerName = resolvePrinterName(config?.impresora_facturas);
-    const anchoPapel = Number(config?.ancho_papel || 58);
-    const fontSize = Number(config?.font_size || 1);
 
     // El cajón se acciona inmediatamente después de confirmar la venta, pero
     // únicamente cuando al menos una parte del pago fue en efectivo.
@@ -1191,41 +1189,6 @@ async function accionesPostPagoMesa({ facturaId, pagos, mesaNumero }) {
         } catch (error) {
             result.cash_drawer_error = String(error?.message || error || 'No se pudo abrir el cajón');
             console.error('Error al abrir cajón:', error);
-        }
-    }
-
-    if (Number(config?.factura_imprime_servidor || 0) === 1) {
-        try {
-            const [facturas] = await db.query('SELECT * FROM facturas WHERE id = ? LIMIT 1', [facturaId]);
-            const [detalles] = await db.query(
-                `SELECT d.*, p.nombre AS producto_nombre
-                 FROM detalle_factura d
-                 JOIN productos p ON p.id = d.producto_id
-                 WHERE d.factura_id = ?
-                 ORDER BY d.id`,
-                [facturaId]
-            );
-            const ticket = buildTicketSvg({
-                factura: facturas?.[0] || { id: facturaId },
-                detalles,
-                pagos,
-                negocio: config,
-                mesaNumero,
-                paperWidthMm: anchoPapel,
-                fontSize
-            });
-            const copias = Math.max(1, Number(config?.factura_copias || 1) || 1);
-            for (let copy = 0; copy < copias; copy += 1) {
-                await printTicket(ticket, {
-                    printerName,
-                    jobPrefix: 'factura-mesa',
-                    dedupeKey: `factura:${facturaId}:copia:${copy}`
-                });
-            }
-            result.printed = true;
-        } catch (error) {
-            result.print_error = String(error?.message || error || 'No se pudo imprimir la factura');
-            console.error('Error al imprimir factura final de mesa:', error);
         }
     }
 
@@ -1284,21 +1247,20 @@ router.get('/pedidos/:pedidoId/cuenta', async (req, res) => {
         const [configRows] = await db.query('SELECT * FROM configuracion_impresion LIMIT 1');
         const config = configRows?.[0] || { ancho_papel: 80, font_size: 1 };
         if (config.logo_data) config.logo_src = `data:image/${config.logo_tipo};base64,${Buffer.from(config.logo_data).toString('base64')}`;
-        if (config.qr_data) config.qr_src = `data:image/${config.qr_tipo};base64,${Buffer.from(config.qr_data).toString('base64')}`;
-        const facturaCuenta = { id: `Mesa ${pedido.mesa_numero}`, fecha: new Date(), total: totalActual, forma_pago: borrador.forma_pago };
+        const facturaCuenta = { id: 'Pendiente', fecha: new Date(), total: totalActual, forma_pago: borrador.forma_pago };
         const ticket = buildTicketSvg({
             factura: facturaCuenta,
             detalles,
             pagos: borrador.pagos,
             negocio: config,
             mesaNumero: pedido.mesa_numero,
-            esCuenta: true,
             paperWidthMm: Number(config?.ancho_papel || 58),
             fontSize: Number(config?.font_size || 1)
         });
         res.render('factura', {
             factura: facturaCuenta,
             detalles, config, pagos: borrador.pagos, es_cuenta: true, pedido_id: pedidoId,
+            mesa_numero: pedido.mesa_numero,
             cuenta_desactualizada: Math.abs(Number(borrador.total) - totalActual) >= 0.01 || JSON.stringify(borrador.items_firma || []) !== JSON.stringify(firmaItemsCuenta(detalles)),
             return_to: '/mesas', embed: false, ticket_svg_data_uri: ticket.dataUri
         });
@@ -1354,12 +1316,11 @@ router.post('/pedidos/:pedidoId/cuenta/imprimir-servidor', async (req, res) => {
         const printerName = resolvePrinterName(config?.impresora_facturas);
         const pagosCuenta = normalizarPagosCuenta(borrador.pagos);
         const ticket = buildTicketSvg({
-            factura: { id: `Mesa ${pedido.mesa_numero}`, fecha: new Date(), total: totalActual },
+            factura: { id: 'Pendiente', fecha: new Date(), total: totalActual, forma_pago: borrador.forma_pago },
             detalles,
             pagos: pagosCuenta,
             negocio: config,
             mesaNumero: pedido.mesa_numero,
-            esCuenta: true,
             paperWidthMm: Number(config?.ancho_papel || 58),
             fontSize: Number(config?.font_size || 1)
         });
@@ -1436,9 +1397,7 @@ router.post('/pedidos/:pedidoId/pagado', async (req, res) => {
         let postPago = {};
         try {
             postPago = await accionesPostPagoMesa({
-                facturaId,
-                pagos,
-                mesaNumero: pedido.mesa_numero
+                pagos
             });
         } catch (postError) {
             const mensaje = String(postError?.message || postError || 'Error posterior al pago');
@@ -1446,7 +1405,7 @@ router.post('/pedidos/:pedidoId/pagado', async (req, res) => {
                 cash_drawer_opened: false,
                 cash_drawer_error: pagosIncluyenEfectivo(pagos) ? mensaje : null,
                 printed: false,
-                print_error: mensaje
+                print_error: null
             };
             console.error('Error posterior al pago:', postError);
         }

@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS configuracion_impresion (
     telefono VARCHAR(20),
     nit VARCHAR(50),
     pie_pagina TEXT,
+    datos_transferencia VARCHAR(255),
     ancho_papel INT DEFAULT 80,
     font_size INT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -261,6 +262,9 @@ ALTER TABLE configuracion_impresion
 
 ALTER TABLE configuracion_impresion
     ADD COLUMN IF NOT EXISTS factura_auto_print TINYINT(1) NOT NULL DEFAULT 0;
+
+ALTER TABLE configuracion_impresion
+    ADD COLUMN IF NOT EXISTS datos_transferencia VARCHAR(255) NULL AFTER pie_pagina;
 
 -- 3) Agregar estado "rechazado" a pedidos y pedido_items (si ya existían)
 -- Nota: Esto permite marcar pedidos cancelados como rechazados y visualizarlos en Cocina.

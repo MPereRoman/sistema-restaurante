@@ -160,8 +160,8 @@
                         <span class="badge <%= config.logo_src ? 'bg-success' : 'bg-secondary' %> me-1">
                             <i class="bi bi-<%= config.logo_src ? 'check' : 'x' %>"></i> Logo
                         </span>
-                        <span class="badge <%= config.qr_src ? 'bg-success' : 'bg-secondary' %>">
-                            <i class="bi bi-<%= config.qr_src ? 'check' : 'x' %>"></i> QR
+                        <span class="badge <%= config.datos_transferencia ? 'bg-success' : 'bg-secondary' %>">
+                            <i class="bi bi-<%= config.datos_transferencia ? 'check' : 'x' %>"></i> CLABE
                         </span>
                     </div>
                 </div>
@@ -246,7 +246,7 @@
                     </div>
 
                     <hr class="my-4">
-                    <h6 class="fw-semibold mb-3">Imágenes</h6>
+                    <h6 class="fw-semibold mb-3">Logo y transferencias</h6>
 
                     <div class="row g-4 mb-3">
                         <!-- Logo -->
@@ -271,30 +271,20 @@
                             </div>
                         </div>
 
-                        <!-- QR -->
+                        <!-- Datos bancarios para transferencias -->
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">
-                                QR para Transferencias
+                            <label for="datosTransferencia" class="form-label fw-semibold">
+                                CLABE interbancaria / cuenta bancaria
                                 <i class="bi bi-question-circle help-icon ms-1"
                                    data-bs-toggle="tooltip"
-                                   title="Imagen QR que aparece al final de la factura para pagos digitales"></i>
+                                   title="Se imprime únicamente cuando el pago incluye transferencia"></i>
                             </label>
-                            <input id="inputQr" type="file" class="form-control" name="qr" accept="image/*">
-                            <div class="mt-2">
-                                <% if (config.qr_src) { %>
-                                    <div class="small text-success mb-2">
-                                        <i class="bi bi-check-circle me-1"></i>QR guardado actualmente
-                                    </div>
-                                <% } else { %>
-                                    <div class="small text-muted mb-2">
-                                        <i class="bi bi-info-circle me-1"></i>Sin QR guardado
-                                    </div>
-                                <% } %>
-                                <img id="previewQr"
-                                     src="<%= config.qr_src || '' %>"
-                                     alt="QR"
-                                     class="border rounded p-1 bg-white"
-                                     style="max-width:130px; display:<%= config.qr_src ? 'block' : 'none' %>;">
+                            <input id="datosTransferencia" type="text" class="form-control"
+                                   name="datos_transferencia" maxlength="255"
+                                   value="<%= config.datos_transferencia || '' %>"
+                                   placeholder="Ej: CLABE 012345678901234567">
+                            <div class="form-text">
+                                Aparecerá bajo la leyenda “Datos para transferencia”. Se conserva como texto para respetar ceros iniciales.
                             </div>
                         </div>
                     </div>
@@ -550,6 +540,7 @@
                     <input type="hidden" name="direccion"      value="<%= config.direccion || '' %>">
                     <input type="hidden" name="telefono"       value="<%= config.telefono || '' %>">
                     <input type="hidden" name="pie_pagina"     value="<%= config.pie_pagina || '' %>">
+                    <input type="hidden" name="datos_transferencia" value="<%= config.datos_transferencia || '' %>">
 
                     <div class="save-bar d-flex align-items-center gap-2">
                         <button type="submit" class="btn btn-primary">
@@ -664,7 +655,7 @@
     });
 
     // ====================================================
-    // Previsualización de logo y QR
+    // Previsualización del logo
     // ====================================================
     (function initPrevisualizadores() {
         function previewFile(inputId, imgId) {
@@ -681,7 +672,6 @@
             });
         }
         previewFile('inputLogo', 'previewLogo');
-        previewFile('inputQr',   'previewQr');
     })();
 
     // ====================================================
