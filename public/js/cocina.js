@@ -4,10 +4,79 @@
 $(function(){
   let allItems = Array.isArray(window.__COCINA_ITEMS__) ? window.__COCINA_ITEMS__ : [];
   const userRole = String(window.__USER_ROLE__ || '').toLowerCase(); // administrador | cocinero | barman | mesero
+  const userName = String(window.__USER_NAME__ || '').trim().toLowerCase();
+  const userUsername = String(window.__USER_USERNAME__ || '').trim().toLowerCase();
   const forcedStation = userRole === 'cocinero' ? 'alimento' : (userRole === 'barman' ? 'bebida' : '');
   let entregadosItems = []; // items estado='servido' (cargados por rango de fecha)
   let rechazadosItems = []; // items estado='rechazado' (cargados por rango de fecha)
   let autoRefreshTimer = null;
+  let alertasInicializadas = false;
+  let enviadosAnteriores = new Set();
+  let mesasListasAnteriores = new Set();
+
+  function perteneceAlMesero(item) {
+    if (userRole !== 'mesero') return true;
+    const asignado = String(item?.mesero_nombre || '').trim().toLowerCase();
+    return !!asignado && (asignado === userName || asignado === userUsername);
+  }
+
+  function mesasCompletamenteListas(items) {
+    const grupos = new Map();
+    (items || []).filter(perteneceAlMesero).forEach((item) => {
+      const key = String(item?.pedido_id || item?.mesa_id || item?.mesa_numero || '');
+      if (!grupos.has(key)) grupos.set(key, []);
+      grupos.get(key).push(item);
+    });
+    return [...grupos.entries()]
+      .filter(([, grupo]) => grupo.length > 0 && grupo.every(item => item.estado === 'listo'))
+      .map(([key, grupo]) => ({ key, items: grupo, mesa: grupo[0]?.mesa_numero }));
+  }
+
+  function procesarAlertas(items) {
+    const actualesEnviados = new Set((items || []).filter(item => item.estado === 'enviado').map(item => String(item.id)));
+    const mesasListas = mesasCompletamenteListas(items);
+    const actualesListas = new Set(mesasListas.map(grupo => grupo.key));
+
+    if (!alertasInicializadas) {
+      enviadosAnteriores = actualesEnviados;
+      mesasListasAnteriores = actualesListas;
+      alertasInicializadas = true;
+      return;
+    }
+
+    if (['cocinero', 'barman', 'administrador'].includes(userRole)) {
+      const nuevos = (items || []).filter(item => item.estado === 'enviado' && !enviadosAnteriores.has(String(item.id)));
+      const porPedido = new Map();
+      nuevos.forEach((item) => {
+        const key = `${item.pedido_id || item.mesa_id}:${item.tipo_preparacion || 'alimento'}`;
+        if (!porPedido.has(key)) porPedido.set(key, []);
+        porPedido.get(key).push(item);
+      });
+      porPedido.forEach((grupo, key) => {
+        const esBebida = String(grupo[0]?.tipo_preparacion || '').toLowerCase() === 'bebida';
+        window.PosAlerts?.notify({
+          title: esBebida ? 'Nueva comanda en barra' : 'Nueva comanda en cocina',
+          body: `Mesa ${grupo[0]?.mesa_numero || '—'} · ${grupo.length} producto(s)`,
+          tag: `comanda:${key}:${grupo.map(item => item.id).join(',')}`,
+          url: `/cocina?tab=enviados${esBebida ? '&estacion=bebida' : '&estacion=alimento'}`
+        });
+      });
+    }
+
+    if (userRole === 'mesero') {
+      mesasListas.filter(grupo => !mesasListasAnteriores.has(grupo.key)).forEach((grupo) => {
+        window.PosAlerts?.notify({
+          title: 'Pedido listo para entregar',
+          body: `Mesa ${grupo.mesa || '—'} · ${grupo.items.length} producto(s) listos`,
+          tag: `mesa-lista:${grupo.key}`,
+          url: '/cocina?tab=listos'
+        });
+      });
+    }
+
+    enviadosAnteriores = actualesEnviados;
+    mesasListasAnteriores = actualesListas;
+  }
 
   function setText(id, value){
     const el = document.getElementById(id);
@@ -91,6 +160,7 @@ $(function(){
   async function cargarCola(){
     const resp = await fetch(`/api/cocina/cola?_=${Date.now()}`, { cache: 'no-store' });
     const items = await resp.json();
+    procesarAlertas(Array.isArray(items) ? items : []);
     allItems = Array.isArray(items) ? items : [];
     render();
   }

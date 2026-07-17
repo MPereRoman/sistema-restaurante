@@ -59,6 +59,9 @@
             <div class="text-muted small"><%= esBarra ? 'Gestiona exclusivamente las comandas de bebidas.' : 'Gestiona el estado de preparación de forma rápida y clara.' %></div>
           </div>
           <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-pos-alert-toggle>
+              <i class="bi bi-bell me-1"></i>Activar alertas
+            </button>
             <button id="btnRefreshCocina" class="btn btn-outline-secondary btn-sm" type="button">
               <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
             </button>
@@ -189,7 +192,10 @@
       // Rol del usuario (para esconder acciones en UI cuando es mesero)
       // Relacionado con: public/js/cocina.js y middleware/auth.js (res.locals.user)
       window.__USER_ROLE__ = <%- JSON.stringify((typeof user !== 'undefined' && user && user.rol) ? user.rol : '') %>;
+      window.__USER_NAME__ = <%- JSON.stringify((typeof user !== 'undefined' && user && user.nombre) ? user.nombre : '') %>;
+      window.__USER_USERNAME__ = <%- JSON.stringify((typeof user !== 'undefined' && user && user.usuario) ? user.usuario : '') %>;
     </script>
+    <script src="/js/alertas.js"></script>
     <script src="/js/cocina.js"></script>
 </body>
 </html>

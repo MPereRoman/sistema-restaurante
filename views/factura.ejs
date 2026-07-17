@@ -122,8 +122,15 @@
     </style>
 </head>
 <body>
+    <% const esCuentaActual = typeof es_cuenta !== 'undefined' && es_cuenta; %>
+    <% const urlImpresionServidor = esCuentaActual
+        ? `/api/mesas/pedidos/${pedido_id}/cuenta/imprimir-servidor`
+        : `/api/facturas/${factura.id}/imprimir-servidor`; %>
     <div class="no-print" style="text-align: center; margin-bottom: 20px;">
-        <button onclick="window.print()" class="print-button"><%= (typeof es_cuenta !== 'undefined' && es_cuenta) ? 'Imprimir cuenta' : 'Imprimir factura' %></button>
+        <button type="button" id="btnImprimirServidor" class="print-button" data-url="<%= urlImpresionServidor %>">
+            <%= esCuentaActual ? 'Imprimir cuenta' : 'Imprimir factura' %>
+        </button>
+        <div id="estadoImpresionServidor" style="min-height:1.2em;margin-top:6px;color:#555;font-size:.9em;"></div>
         <!-- Botón Volver: solo se muestra en pantalla completa (no en iframe/modal) -->
         <!-- Relacionado con: routes/facturas.js (embed=1 cuando se abre desde index/ventas) -->
         <% if (!(typeof embed !== 'undefined' && embed)) { %>
@@ -243,7 +250,42 @@
         </div>
     </div>
 
-    <% if (!(typeof es_cuenta !== 'undefined' && es_cuenta) && config && Number(config.factura_auto_print || 0) === 1) { %>
+    <script>
+        (function () {
+            const btn = document.getElementById('btnImprimirServidor');
+            const estado = document.getElementById('estadoImpresionServidor');
+            if (!btn) return;
+
+            btn.addEventListener('click', async function () {
+                const original = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = 'Imprimiendo…';
+                if (estado) estado.textContent = 'Enviando a la impresora de la Raspberry…';
+                try {
+                    const resp = await fetch(btn.dataset.url, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok) throw new Error(data.error || 'No se pudo imprimir');
+                    if (estado) {
+                        estado.style.color = '#198754';
+                        estado.textContent = `Impreso en ${data.impresora || 'POS5890Z'} (${data.copias || 1} copia/s).`;
+                    }
+                } catch (error) {
+                    if (estado) {
+                        estado.style.color = '#dc3545';
+                        estado.textContent = String(error.message || error);
+                    }
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = original;
+                }
+            });
+        })();
+    </script>
+
+    <% if (!esCuentaActual && config && Number(config.factura_auto_print || 0) === 1 && Number(config.factura_imprime_servidor || 0) !== 1) { %>
     <script>
         window.addEventListener('load', function () {
             try { window.print(); } catch (_) {}

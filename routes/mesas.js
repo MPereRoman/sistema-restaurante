@@ -1124,7 +1124,7 @@ function pagosIncluyenEfectivo(pagos) {
     );
 }
 
-function buildFacturaMesaTexto({ factura, detalles, pagos, negocio, mesaNumero }) {
+function buildFacturaMesaTexto({ factura, detalles, pagos, negocio, mesaNumero, esCuenta = false }) {
     const line = '-'.repeat(32);
     const out = [];
     out.push(String(negocio?.nombre_negocio || 'BISTRO CIENTO44'));
@@ -1132,7 +1132,7 @@ function buildFacturaMesaTexto({ factura, detalles, pagos, negocio, mesaNumero }
     if (negocio?.telefono) out.push(`Tel: ${negocio.telefono}`);
     if (negocio?.nit) out.push(`R.F.C.: ${negocio.nit}`);
     out.push(line);
-    out.push(`Factura #: ${factura?.id ?? '-'}`);
+    out.push(`${esCuenta ? 'CUENTA' : 'Factura #'}: ${factura?.id ?? '-'}`);
     if (mesaNumero) out.push(`Mesa: ${mesaNumero}`);
     out.push(`Fecha: ${new Date(factura?.fecha || Date.now()).toLocaleString('es-CO')}`);
     out.push(line);
@@ -1279,6 +1279,73 @@ router.get('/pedidos/:pedidoId/cuenta', async (req, res) => {
     } catch (error) {
         console.error('Error al mostrar cuenta:', error);
         res.status(500).send('No se pudo mostrar la cuenta');
+    }
+});
+
+// Imprime la cuenta provisional directamente mediante CUPS en la Raspberry.
+// No registra la venta ni libera la mesa.
+router.post('/pedidos/:pedidoId/cuenta/imprimir-servidor', async (req, res) => {
+    try {
+        const pedidoId = Number(req.params.pedidoId);
+        if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+            return res.status(400).json({ error: 'Pedido inválido' });
+        }
+
+        const [pedidos] = await db.query(
+            `SELECT p.*, m.numero AS mesa_numero
+             FROM pedidos p
+             JOIN mesas m ON m.id = p.mesa_id
+             WHERE p.id = ?
+             LIMIT 1`,
+            [pedidoId]
+        );
+        if (!pedidos.length) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+        const pedido = pedidos[0];
+        let borrador = null;
+        try { borrador = JSON.parse(pedido.pagos_borrador || 'null'); } catch (_) { borrador = null; }
+        if (!borrador?.pagos?.length) {
+            return res.status(400).json({ error: 'Primero genera la cuenta desde la mesa' });
+        }
+
+        const [detalles] = await db.query(
+            `SELECT i.*, pr.nombre AS producto_nombre
+             FROM pedido_items i
+             JOIN productos pr ON pr.id = i.producto_id
+             WHERE i.pedido_id = ?
+               AND i.estado NOT IN ('cancelado','rechazado')
+             ORDER BY i.id`,
+            [pedidoId]
+        );
+        const totalActual = detalles.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+        const cuentaCambio = Math.abs(Number(borrador.total) - totalActual) >= 0.01 ||
+            JSON.stringify(borrador.items_firma || []) !== JSON.stringify(firmaItemsCuenta(detalles));
+        if (cuentaCambio) {
+            return res.status(409).json({ error: 'El pedido cambió; genera nuevamente la cuenta antes de imprimir' });
+        }
+        const [configRows] = await db.query('SELECT * FROM configuracion_impresion LIMIT 1');
+        const config = configRows?.[0] || {};
+        const printerName = resolvePrinterName(config?.impresora_facturas);
+        const texto = buildFacturaMesaTexto({
+            factura: { id: `Mesa ${pedido.mesa_numero}`, fecha: new Date(), total: totalActual },
+            detalles,
+            pagos: normalizarPagosCuenta(borrador.pagos),
+            negocio: config,
+            mesaNumero: pedido.mesa_numero,
+            esCuenta: true
+        });
+
+        await printText(texto, {
+            printerName,
+            copies: Math.max(1, Number(config?.factura_copias || 1) || 1),
+            paperWidthMm: Number(config?.ancho_papel || 58),
+            fontSize: Number(config?.font_size || 1),
+            jobPrefix: 'cuenta-mesa'
+        });
+        res.json({ printed: true, impresora: printerName, copias: Math.max(1, Number(config?.factura_copias || 1) || 1) });
+    } catch (error) {
+        console.error('Error al imprimir cuenta provisional:', error);
+        res.status(500).json({ error: 'No se pudo imprimir la cuenta en el servidor' });
     }
 });
 

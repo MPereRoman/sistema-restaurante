@@ -10,6 +10,50 @@ $(function() {
   // Rol actual (inyectado desde views/mesas.ejs)
   // Relacionado con: views/mesas.ejs (window.__USER_ROLE__) y server.js (protección de rutas)
   const userRole = String(window.__USER_ROLE__ || '').toLowerCase(); // administrador | mesero
+  const userName = String(window.__USER_NAME__ || '').trim().toLowerCase();
+  const userUsername = String(window.__USER_USERNAME__ || '').trim().toLowerCase();
+  let alertasListosInicializadas = false;
+  let mesasListasAnteriores = new Set();
+
+  function itemPerteneceAlMesero(item) {
+    if (userRole !== 'mesero') return true;
+    const asignado = String(item?.mesero_nombre || '').trim().toLowerCase();
+    return !!asignado && (asignado === userName || asignado === userUsername);
+  }
+
+  async function revisarPedidosListos() {
+    try {
+      const resp = await fetch(`/api/cocina/cola?_=${Date.now()}`, { cache: 'no-store' });
+      if (!resp.ok) return;
+      const cola = await resp.json();
+      const grupos = new Map();
+      (Array.isArray(cola) ? cola : []).filter(itemPerteneceAlMesero).forEach((item) => {
+        const key = String(item?.pedido_id || item?.mesa_id || item?.mesa_numero || '');
+        if (!grupos.has(key)) grupos.set(key, []);
+        grupos.get(key).push(item);
+      });
+      const listas = [...grupos.entries()]
+        .filter(([, grupo]) => grupo.length > 0 && grupo.every(item => item.estado === 'listo'))
+        .map(([key, grupo]) => ({ key, items: grupo, mesa: grupo[0]?.mesa_numero }));
+      const actuales = new Set(listas.map(grupo => grupo.key));
+
+      if (!alertasListosInicializadas) {
+        mesasListasAnteriores = actuales;
+        alertasListosInicializadas = true;
+        return;
+      }
+
+      listas.filter(grupo => !mesasListasAnteriores.has(grupo.key)).forEach((grupo) => {
+        window.PosAlerts?.notify({
+          title: 'Pedido listo para entregar',
+          body: `Mesa ${grupo.mesa || '—'} · ${grupo.items.length} producto(s) listos`,
+          tag: `mesa-lista:${grupo.key}`,
+          url: '/cocina?tab=listos'
+        });
+      });
+      mesasListasAnteriores = actuales;
+    } catch (_) { /* La alerta no debe interrumpir la operación de mesas. */ }
+  }
 
   // ===== Pago mixto (varios medios) =====
   // Relacionado con:
@@ -1016,8 +1060,10 @@ $(function() {
 
   // refrescar cada 3s
   setInterval(refreshMesas, 3000);
+  setInterval(revisarPedidosListos, 3000);
   // primera carga
   refreshMesas();
+  revisarPedidosListos();
 
   // Facturar pedido
   $('#btnFacturarPedido').on('click', async function(){
