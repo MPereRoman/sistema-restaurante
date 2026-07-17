@@ -152,6 +152,12 @@
         </div>
     <% } %>
 
+    <% if (typeof ticket_svg_data_uri !== 'undefined' && ticket_svg_data_uri) { %>
+    <div class="factura" style="padding:0;overflow:hidden;">
+        <img src="<%= ticket_svg_data_uri %>" alt="Vista previa exacta del comprobante"
+             style="display:block;width:100%;height:auto;background:#fff;">
+    </div>
+    <% } else { %>
     <div class="factura">
         <% if (config.logo_src) { %>
             <img src="<%= config.logo_src %>" alt="Logo" class="logo mb-3">
@@ -249,6 +255,7 @@
             </div>
         </div>
     </div>
+    <% } %>
 
     <script>
         (function () {
@@ -270,7 +277,9 @@
                     if (!resp.ok) throw new Error(data.error || 'No se pudo imprimir');
                     if (estado) {
                         estado.style.color = '#198754';
-                        estado.textContent = `Impreso en ${data.impresora || 'POS5890Z'} (${data.copias || 1} copia/s).`;
+                        estado.textContent = data.duplicate_suppressed
+                            ? 'Este mismo comprobante ya estaba en la cola; no se envió una copia duplicada.'
+                            : `Enviado a ${data.impresora || 'POS5890Z'} (${data.copias || 1} copia/s${data.job_id ? `, trabajo ${data.job_id}` : ''}).`;
                     }
                 } catch (error) {
                     if (estado) {

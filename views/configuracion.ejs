@@ -399,12 +399,12 @@
                                                name="cocina_imprime_servidor" value="1"
                                                <%= Number(config.cocina_imprime_servidor || 0) === 1 ? 'checked' : '' %>>
                                         <label class="form-check-label fw-semibold" for="cfgCocinaImprimeServidor">
-                                            Imprimir en servidor (PC)
+                                            Imprimir en Raspberry
                                         </label>
                                     </div>
                                     <p class="small text-muted mb-0">
-                                        Cuando el mesero toma el pedido desde un celular/tablet, la PC imprime la comanda
-                                        directamente. <strong>La impresora debe estar conectada a la PC.</strong>
+                                        Cuando el mesero toma el pedido desde un celular/tablet, la Raspberry imprime la comanda
+                                        directamente mediante CUPS.
                                     </p>
                                 </div>
                             </div>
@@ -448,9 +448,13 @@
                                     class="btn btn-outline-info btn-sm">
                                 <i class="bi bi-cup-straw me-1"></i>Prueba Barra
                             </button>
-                            <a href="/api/mesas/pedidos/1/comanda?auto_print=0" target="_blank"
+                            <a href="/configuracion/impresion/comanda-preview?area=alimento" target="_blank"
                                class="btn btn-outline-success btn-sm">
-                                <i class="bi bi-eye me-1"></i>Ver formato en pantalla
+                                <i class="bi bi-eye me-1"></i>Vista Cocina
+                            </a>
+                            <a href="/configuracion/impresion/comanda-preview?area=bebida" target="_blank"
+                               class="btn btn-outline-success btn-sm">
+                                <i class="bi bi-eye me-1"></i>Vista Barra
                             </a>
                         </div>
                     </div>
@@ -478,8 +482,8 @@
                                         </label>
                                     </div>
                                     <p class="small text-muted mb-0">
-                                        La factura se imprime directamente en la PC sin abrir ventana en el navegador.
-                                        <strong>La impresora debe estar conectada a la PC.</strong>
+                                        La factura se envía directamente por CUPS sin abrir el diálogo de impresión
+                                        de Windows o Android.
                                     </p>
                                 </div>
                             </div>

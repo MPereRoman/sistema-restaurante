@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { printText, resolvePrinterName } = require('../services/printer');
+const { resolvePrinterName } = require('../services/printer');
+const { buildTicketSvg, printTicket } = require('../services/ticket-renderer');
 
 // Validar rutas de retorno (evitar open-redirect / URLs externas)
 // Se usa para que el botón "Volver" de la impresión regrese a Mesas cuando aplique.
@@ -38,50 +39,6 @@ function sumatoriaPagos(pagos) {
 function almostEqualMoney(a, b) {
     // Tolerancia de 1 centavo para evitar problemas de flotantes
     return Math.abs(Number(a) - Number(b)) < 0.01;
-}
-
-// Imprime texto plano en la impresora del servidor (factura).
-// anchoPapelMm y fontSize vienen de configuracion_impresion.
-// Relacionado con: POST /:id/imprimir-servidor
-async function imprimirTextoServidor(texto, impresoraNombre, copias, anchoPapelMm, fontSize) {
-    await printText(texto, {
-        printerName: impresoraNombre,
-        copies: copias,
-        paperWidthMm: anchoPapelMm,
-        fontSize,
-        jobPrefix: 'factura'
-    });
-}
-
-function buildFacturaTexto({ factura, detalles, pagos, negocio }) {
-    const line = '-'.repeat(42);
-    const out = [];
-    out.push(String(negocio?.nombre_negocio || 'FACTURA'));
-    if (negocio?.direccion) out.push(String(negocio.direccion));
-    if (negocio?.telefono) out.push(`Tel: ${negocio.telefono}`);
-    if (negocio?.nit) out.push(`R.F.C.: ${negocio.nit}`);
-    out.push(line);
-    out.push(`Factura #: ${factura?.id ?? '-'}`);
-    out.push(`Fecha: ${new Date(factura?.fecha || Date.now()).toLocaleString('es-CO')}`);
-    out.push(line);
-    (detalles || []).forEach((d) => {
-        out.push(String(d?.producto_nombre || ''));
-        out.push(`${Number(d?.cantidad || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}  $${Number(d?.precio_unitario || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}  $${Number(d?.subtotal || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
-    });
-    out.push(line);
-    out.push(`Total: $${Number(factura?.total || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
-    if (Array.isArray(pagos) && pagos.length > 0) {
-        out.push('Pagos:');
-        pagos.forEach((p) => {
-            const metodo = String(p?.metodo || '').trim();
-            const ref = String(p?.referencia || '').trim();
-            out.push(`${metodo}: $${Number(p?.monto || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}${ref ? ` (${ref})` : ''}`);
-        });
-    } else {
-        out.push(`Forma de pago: ${String(factura?.forma_pago || '')}`);
-    }
-    out.push(String(negocio?.pie_pagina || 'Gracias por su compra'));
-    return out.join('\r\n');
 }
 
 // Crear nueva factura
@@ -257,12 +214,22 @@ router.get('/:id/imprimir', async (req, res) => {
             return res.status(404).json({ error: 'No se encontraron detalles de la factura' });
         }
 
+        const ticket = buildTicketSvg({
+            factura: facturas[0],
+            detalles,
+            pagos,
+            negocio: config,
+            paperWidthMm: Number(config?.ancho_papel || 58),
+            fontSize: Number(config?.font_size || 1)
+        });
+
         // Renderizar la vista de la factura
         res.render('factura', {
             factura: facturas[0],
             detalles: detalles,
             config: config,
             pagos: pagos,
+            ticket_svg_data_uri: ticket.dataUri,
             // Relacionado con: views/factura.ejs (botón Volver)
             return_to: return_to,
             // Relacionado con: index (modal) y ventas (reimprimir)
@@ -411,14 +378,29 @@ router.post('/:id/imprimir-servidor', async (req, res) => {
             pagos = [];
         }
 
-        const texto = buildFacturaTexto({
+        const ticket = buildTicketSvg({
             factura,
             detalles: detalles || [],
             pagos,
-            negocio: config || {}
+            negocio: config || {},
+            paperWidthMm: anchoPapel,
+            fontSize
         });
-        await imprimirTextoServidor(texto, printerName, copias, anchoPapel, fontSize);
-        res.json({ printed: true, impresora: printerName || 'predeterminada', copias });
+        const jobs = [];
+        for (let copy = 0; copy < copias; copy += 1) {
+            jobs.push(await printTicket(ticket, {
+                printerName,
+                jobPrefix: 'factura',
+                dedupeKey: `factura:${facturaId}:copia:${copy}`
+            }));
+        }
+        res.json({
+            printed: true,
+            impresora: printerName,
+            copias,
+            job_id: jobs[0]?.job_id || null,
+            duplicate_suppressed: jobs.every(job => job?.duplicate_suppressed)
+        });
     } catch (error) {
         console.error('Error al imprimir factura en servidor:', error);
         res.status(500).json({ error: 'No se pudo imprimir la factura en servidor' });

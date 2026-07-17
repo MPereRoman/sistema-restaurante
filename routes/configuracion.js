@@ -5,7 +5,8 @@ const multer = require('multer');
 const os = require('os');
 const { exec } = require('child_process');
 const QRCode = require('qrcode');
-const { openCashDrawer, printText, resolvePrinterName } = require('../services/printer');
+const { openCashDrawer, resolvePrinterName } = require('../services/printer');
+const { buildComandaSvg, printTicket } = require('../services/ticket-renderer');
 
 // Configuración de multer para memoria
 const upload = multer({
@@ -226,45 +227,35 @@ router.get('/impresoras', (req, res) => {
     });
 });
 
-// POST /configuracion/impresion/comanda-prueba
-// Imprime una comanda de prueba desde el servidor (PC), sin navegador móvil.
+function crearComandaPrueba(cfg, area) {
+    return buildComandaSvg({
+        pedido: { id: 'PRUEBA', mesa_numero: 1, mesero_nombre: 'Prueba' },
+        items: [{ cantidad: 1, producto_nombre: 'Producto de prueba', nota: 'Sin cebolla' }],
+        negocio: String(cfg?.nombre_negocio || 'MI NEGOCIO'),
+        area: area === 'bebida' ? 'BARRA · BEBIDAS' : 'COCINA · ALIMENTOS',
+        paperWidthMm: Number(cfg?.ancho_papel || 58),
+        fontSize: Number(cfg?.font_size || 1)
+    });
+}
+
+// Imprime exactamente el mismo SVG que se presenta en la vista previa.
 router.post('/impresion/comanda-prueba', async (req, res) => {
     try {
         const [rows] = await db.query('SELECT nombre_negocio, impresora_comandas, impresora_comandas_barra, ancho_papel, font_size FROM configuracion_impresion LIMIT 1');
         const cfg       = rows?.[0] || {};
-        const negocio   = String(cfg?.nombre_negocio || 'MI NEGOCIO');
         const area       = String(req.body?.area || 'alimento').toLowerCase() === 'bebida' ? 'bebida' : 'alimento';
         const impresora = resolvePrinterName(
             area === 'bebida'
                 ? (cfg?.impresora_comandas_barra || cfg?.impresora_comandas)
                 : cfg?.impresora_comandas
         );
-        const anchoPapel = Number(cfg?.ancho_papel || 80);
-        const fontSize   = Number(cfg?.font_size   || 1);
-
-        const line = '-'.repeat(42);
-        const texto = [
-            negocio,
-            line,
-            `COMANDA DE PRUEBA · ${area === 'bebida' ? 'BARRA' : 'COCINA'}`,
-            `Fecha: ${new Date().toLocaleString('es-CO')}`,
-            'Mesa: 1',
-            'Mesero: Prueba',
-            line,
-            'x1 Producto de prueba',
-            '  Obs: Sin cebolla',
-            line,
-            'Fin de prueba'
-        ].join('\r\n');
-
-        await printText(texto, {
+        const ticket = crearComandaPrueba(cfg, area);
+        const job = await printTicket(ticket, {
             printerName: impresora,
-            paperWidthMm: anchoPapel,
-            fontSize,
-            bold: true,
-            jobPrefix: 'comanda-prueba'
+            jobPrefix: 'comanda-prueba',
+            dedupeKey: `comanda-prueba:${area}:${Math.floor(Date.now() / 15000)}`
         });
-        res.json({ ok: true, impresora });
+        res.json({ ok: true, impresora, job_id: job?.job_id || null, duplicate_suppressed: !!job?.duplicate_suppressed });
     } catch (error) {
         console.error('Error al imprimir comanda de prueba:', error);
         res.status(500).json({ error: 'No se pudo imprimir la comanda de prueba en servidor' });
@@ -285,6 +276,25 @@ router.post('/impresion/cajon-prueba', async (req, res) => {
     } catch (error) {
         console.error('Error al abrir cajón de prueba:', error);
         res.status(500).json({ error: 'No se pudo abrir el cajón' });
+    }
+});
+
+router.get('/impresion/comanda-preview', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT * FROM configuracion_impresion LIMIT 1');
+        const cfg = rows?.[0] || {};
+        const area = String(req.query?.area || 'alimento').toLowerCase() === 'bebida' ? 'bebida' : 'alimento';
+        const ticket = crearComandaPrueba(cfg, area);
+        res.render('comanda', {
+            pedido: { id: 'PRUEBA', mesa_numero: 1, mesero_nombre: 'Prueba' },
+            items: [],
+            config: cfg,
+            auto_print: false,
+            ticket_svg_data_uri: ticket.dataUri
+        });
+    } catch (error) {
+        console.error('Error al mostrar vista previa de comanda:', error);
+        res.status(500).send('No se pudo generar la vista previa');
     }
 });
 

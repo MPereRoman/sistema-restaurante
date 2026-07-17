@@ -61,17 +61,28 @@
     try {
       const ctx = await ensureAudio();
       if (!ctx || ctx.state !== 'running') return;
-      const oscillator = ctx.createOscillator();
-      const gain = ctx.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
-      oscillator.connect(gain);
-      gain.connect(ctx.destination);
-      oscillator.start();
-      oscillator.stop(ctx.currentTime + 0.36);
+      const inicio = ctx.currentTime;
+      const notas = [
+        { frecuencia: 740, inicio: 0.00, duracion: 0.30 },
+        { frecuencia: 1046, inicio: 0.38, duracion: 0.30 },
+        { frecuencia: 740, inicio: 0.76, duracion: 0.30 },
+        { frecuencia: 1175, inicio: 1.14, duracion: 0.48 }
+      ];
+      notas.forEach(function (nota) {
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const t0 = inicio + nota.inicio;
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(nota.frecuencia, t0);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.30, t0 + 0.025);
+        gain.gain.setValueAtTime(0.30, t0 + Math.max(0.03, nota.duracion - 0.08));
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + nota.duracion);
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start(t0);
+        oscillator.stop(t0 + nota.duracion + 0.02);
+      });
     } catch (_) {}
   }
 

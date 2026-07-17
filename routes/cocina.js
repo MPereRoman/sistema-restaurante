@@ -256,7 +256,8 @@ router.put('/item/:id/rechazar', requireRole(ROLES_COCINA), async (req, res) => 
         const [result] = await db.query(
             `UPDATE pedido_items i
              JOIN productos pr ON pr.id = i.producto_id
-             SET i.estado = 'rechazado'
+             JOIN pedidos p ON p.id = i.pedido_id
+             SET i.estado = 'rechazado', p.pagos_borrador = NULL
              WHERE i.id = ? AND i.estado IN (?)
              ${estacion ? 'AND pr.tipo_preparacion = ?' : ''}`,
             params

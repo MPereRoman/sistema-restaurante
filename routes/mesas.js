@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { openCashDrawer, printText, resolvePrinterName } = require('../services/printer');
+const { openCashDrawer, resolvePrinterName } = require('../services/printer');
+const { buildComandaSvg, buildTicketSvg, printTicket } = require('../services/ticket-renderer');
 
 // Rutas para gestión de mesas y pedidos de restaurante
 // - Renderiza la vista de mesas (GET /mesas)
@@ -88,40 +89,42 @@ async function getEnvioCocinaConfig(executor) {
     }
 }
 
-function buildComandaTexto({ pedido, items, negocio, area }) {
-    const line = '-'.repeat(42);
-    const lines = [];
-    lines.push(String(negocio || 'COMANDA'));
-    lines.push(`DESTINO: ${String(area || 'COCINA').toUpperCase()}`);
-    lines.push(line);
-    lines.push(`Mesa: ${pedido?.mesa_numero ?? '-'}`);
-    lines.push(`Personas: ${Math.max(1, Number(pedido?.numero_personas || 1))}`);
-    lines.push(`Mesero: ${pedido?.mesero_nombre || 'Sin asignar'}`);
-    lines.push(`Fecha: ${new Date().toLocaleString('es-CO')}`);
-    lines.push(`Pedido: #${pedido?.id ?? '-'}`);
-    lines.push(line);
-    (items || []).forEach((it) => {
-        lines.push(`x${Number(it?.cantidad || 0)} ${String(it?.producto_nombre || '')}`);
-        const nota = String(it?.nota || '').trim();
-        if (nota) lines.push(`  Obs: ${nota}`);
-    });
-    lines.push(line);
-    lines.push('Fin de comanda');
-    return lines.join('\r\n');
-}
+// La cuenta solo es válida mientras coincida con los productos activos.
+async function aplicarValidezCuenta(mesas) {
+    const pedidosIds = (mesas || [])
+        .filter(mesa => Number(mesa.cuenta_generada || 0) === 1 && Number(mesa.pedido_abierto_id || 0) > 0)
+        .map(mesa => Number(mesa.pedido_abierto_id));
+    if (!pedidosIds.length) return mesas;
 
-// Imprime texto plano en la impresora del servidor (comanda).
-// anchoPapelMm: ancho del rollo térmico en mm (58 o 80), viene de configuracion_impresion.
-// fontSize: 1=normal, 2=grande (idem config).
-// Relacionado con: POST /pedidos/:id/comanda/imprimir-servidor
-async function imprimirTextoEnServidor(texto, impresoraNombre, anchoPapelMm, fontSize) {
-    return printText(texto, {
-        printerName: impresoraNombre,
-        paperWidthMm: anchoPapelMm,
-        fontSize,
-        bold: true,
-        jobPrefix: 'comanda'
-    });
+    const [pedidos] = await db.query('SELECT id, pagos_borrador FROM pedidos WHERE id IN (?)', [pedidosIds]);
+    const [items] = await db.query(
+        `SELECT id, pedido_id, producto_id, cantidad, subtotal
+         FROM pedido_items
+         WHERE pedido_id IN (?) AND estado NOT IN ('cancelado','rechazado')`,
+        [pedidosIds]
+    );
+    const itemsPorPedido = new Map();
+    for (const item of items) {
+        const pedidoId = Number(item.pedido_id);
+        if (!itemsPorPedido.has(pedidoId)) itemsPorPedido.set(pedidoId, []);
+        itemsPorPedido.get(pedidoId).push(item);
+    }
+    const validez = new Map();
+    for (const pedido of pedidos) {
+        let borrador = null;
+        try { borrador = JSON.parse(pedido.pagos_borrador || 'null'); } catch (_) { borrador = null; }
+        const actuales = itemsPorPedido.get(Number(pedido.id)) || [];
+        const total = actuales.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+        validez.set(Number(pedido.id), !!borrador?.pagos?.length &&
+            Math.abs(Number(borrador.total || 0) - total) < 0.01 &&
+            JSON.stringify(borrador.items_firma || []) === JSON.stringify(firmaItemsCuenta(actuales)));
+    }
+    for (const mesa of mesas || []) {
+        if (Number(mesa.cuenta_generada || 0) === 1) {
+            mesa.cuenta_generada = validez.get(Number(mesa.pedido_abierto_id)) ? 1 : 0;
+        }
+    }
+    return mesas;
 }
 
 // GET /mesas - Página de gestión de mesas
@@ -178,6 +181,7 @@ router.get('/', async (req, res) => {
             ORDER BY m.numero
         `);
 
+        await aplicarValidezCuenta(mesas);
         res.render('mesas', { mesas: mesas || [] });
     } catch (error) {
         console.error('Error al cargar mesas:', error);
@@ -239,6 +243,7 @@ router.get('/listar', async (req, res) => {
             WHERE m.activa = 1
             ORDER BY m.numero
         `);
+        await aplicarValidezCuenta(mesas);
         res.json(mesas);
     } catch (error) {
         console.error('Error al listar mesas:', error);
@@ -534,7 +539,7 @@ router.get('/pedidos/:pedidoId/comanda', async (req, res) => {
             : [];
 
         const incluirImpresos = String(req.query.incluir_impresos || '') === '1';
-        const marcarImpresos = String(req.query.marcar_impresos || '1') === '1';
+        const marcarImpresos = String(req.query.marcar_impresos || '0') === '1';
 
         let sql = `
             SELECT i.*, pr.nombre AS producto_nombre, pr.tipo_preparacion
@@ -580,11 +585,24 @@ router.get('/pedidos/:pedidoId/comanda', async (req, res) => {
             throw err;
         }
 
+        const soloBebidas = items.length > 0 && items.every(it => String(it.tipo_preparacion || 'alimento') === 'bebida');
+        const soloAlimentos = items.length > 0 && items.every(it => String(it.tipo_preparacion || 'alimento') !== 'bebida');
+        const area = soloBebidas ? 'BARRA · BEBIDAS' : (soloAlimentos ? 'COCINA · ALIMENTOS' : 'PEDIDOS · COCINA Y BARRA');
+        const ticket = buildComandaSvg({
+            pedido,
+            items,
+            negocio: config?.nombre_negocio || 'BISTRO CIENTO44',
+            area,
+            paperWidthMm: Number(config?.ancho_papel || 58),
+            fontSize: Number(config?.font_size || 1)
+        });
+
         res.render('comanda', {
             pedido,
             items: items || [],
             config,
-            auto_print: String(req.query.auto_print || '') === '1'
+            auto_print: String(req.query.auto_print || '') === '1',
+            ticket_svg_data_uri: ticket.dataUri
         });
     } catch (error) {
         console.error('Error al generar comanda:', error);
@@ -649,19 +667,31 @@ router.post('/pedidos/:pedidoId/comanda/imprimir-servidor', async (req, res) => 
 
         const impresiones = [];
         for (const grupo of grupos) {
-            const texto = buildComandaTexto({
+            const ticket = buildComandaSvg({
                 pedido,
                 items: grupo.items,
                 negocio: cfg?.nombre_negocio || 'COMANDA',
-                area: grupo.area
+                area: grupo.area,
+                paperWidthMm: anchoPapel,
+                fontSize
             });
-            await imprimirTextoEnServidor(texto, grupo.impresora, anchoPapel, fontSize);
             const idsGrupo = grupo.items.map(it => Number(it.id)).filter(n => Number.isInteger(n) && n > 0);
+            const job = await printTicket(ticket, {
+                printerName: grupo.impresora,
+                jobPrefix: `comanda-${grupo.tipo}`,
+                dedupeKey: `comanda:${pedidoId}:${grupo.tipo}:${idsGrupo.join(',')}`
+            });
             await db.query(
                 `UPDATE pedido_items SET comanda_impresa_at = COALESCE(comanda_impresa_at, NOW()) WHERE id IN (?)`,
                 [idsGrupo]
             );
-            impresiones.push({ area: grupo.area, impresora: grupo.impresora || 'predeterminada', total_items: idsGrupo.length });
+            impresiones.push({
+                area: grupo.area,
+                impresora: resolvePrinterName(grupo.impresora),
+                total_items: idsGrupo.length,
+                job_id: job?.job_id || null,
+                duplicate_suppressed: !!job?.duplicate_suppressed
+            });
         }
 
         const idsImpresos = impresiones.reduce((total, impresion) => total + Number(impresion.total_items || 0), 0);
@@ -694,6 +724,7 @@ router.post('/pedidos/:pedidoId/items', async (req, res) => {
                  VALUES (?, ?, ?, ?, ?, ?, 'pendiente', ?)` ,
                 [pedidoId, producto_id, cantidad, unidad || 'UND', precio, subtotal, nota || null]
             );
+            await connection.query('UPDATE pedidos SET pagos_borrador = NULL WHERE id = ?', [pedidoId]);
             const [pedidoRows] = await connection.query('SELECT mesa_id FROM pedidos WHERE id = ? LIMIT 1', [pedidoId]);
             if (pedidoRows.length > 0) {
                 await syncMesaEstadoByItems(connection, pedidoRows[0].mesa_id);
@@ -724,7 +755,7 @@ router.put('/items/:itemId', async (req, res) => {
         try {
             await connection.beginTransaction();
             const [rows] = await connection.query(
-                `SELECT i.id, i.estado, i.cantidad, i.precio_unitario, i.nota
+                `SELECT i.id, i.pedido_id, i.estado, i.cantidad, i.precio_unitario, i.nota
                  FROM pedido_items i
                  WHERE i.id = ?
                  LIMIT 1
@@ -753,6 +784,7 @@ router.put('/items/:itemId', async (req, res) => {
                  WHERE id = ? AND estado = 'pendiente'`,
                 [nuevaCantidad, subtotal, nuevaNota || null, itemId]
             );
+            await connection.query('UPDATE pedidos SET pagos_borrador = NULL WHERE id = ?', [actual.pedido_id]);
 
             const mesaId = await getMesaIdByItem(connection, itemId);
             if (mesaId) {
@@ -791,7 +823,7 @@ router.delete('/items/:itemId', async (req, res) => {
         try {
             await connection.beginTransaction();
             const [itemRows] = await connection.query(
-                `SELECT i.id, i.estado, p.mesa_id
+                `SELECT i.id, i.pedido_id, i.estado, p.mesa_id
                  FROM pedido_items i
                  JOIN pedidos p ON p.id = i.pedido_id
                  WHERE i.id = ?
@@ -821,6 +853,7 @@ router.delete('/items/:itemId', async (req, res) => {
                 return res.status(400).json({ error: 'No se pudo eliminar el item' });
             }
 
+            await connection.query('UPDATE pedidos SET pagos_borrador = NULL WHERE id = ?', [itemRows[0].pedido_id]);
             await syncMesaEstadoByItems(connection, itemRows[0].mesa_id);
             await connection.commit();
             connection.release();
@@ -935,6 +968,14 @@ router.put('/items/:itemId/cancelar', async (req, res) => {
                 return res.status(400).json({ error: 'No se pudo cancelar: estado no permitido o item no encontrado' });
             }
 
+            await connection.query(
+                `UPDATE pedidos p
+                 JOIN pedido_items i ON i.pedido_id = p.id
+                 SET p.pagos_borrador = NULL
+                 WHERE i.id = ?`,
+                [itemId]
+            );
+
             const mesaId = await getMesaIdByItem(connection, itemId);
             if (mesaId) await syncMesaEstadoByItems(connection, mesaId);
 
@@ -993,6 +1034,9 @@ router.delete('/pedidos/:pedidoId/items/rechazados', async (req, res) => {
                    AND estado IN ('rechazado','cancelado')`,
                 [pedidoId]
             );
+            if (Number(result?.affectedRows || 0) > 0) {
+                await connection.query('UPDATE pedidos SET pagos_borrador = NULL WHERE id = ?', [pedidoId]);
+            }
 
             const [restantes] = await connection.query(
                 `SELECT COUNT(*) AS cnt
@@ -1124,38 +1168,6 @@ function pagosIncluyenEfectivo(pagos) {
     );
 }
 
-function buildFacturaMesaTexto({ factura, detalles, pagos, negocio, mesaNumero, esCuenta = false }) {
-    const line = '-'.repeat(32);
-    const out = [];
-    out.push(String(negocio?.nombre_negocio || 'BISTRO CIENTO44'));
-    if (negocio?.direccion) out.push(String(negocio.direccion));
-    if (negocio?.telefono) out.push(`Tel: ${negocio.telefono}`);
-    if (negocio?.nit) out.push(`R.F.C.: ${negocio.nit}`);
-    out.push(line);
-    out.push(`${esCuenta ? 'CUENTA' : 'Factura #'}: ${factura?.id ?? '-'}`);
-    if (mesaNumero) out.push(`Mesa: ${mesaNumero}`);
-    out.push(`Fecha: ${new Date(factura?.fecha || Date.now()).toLocaleString('es-CO')}`);
-    out.push(line);
-    (detalles || []).forEach((d) => {
-        out.push(String(d?.producto_nombre || ''));
-        out.push(`${Number(d?.cantidad || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}  $${Number(d?.precio_unitario || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}  $${Number(d?.subtotal || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
-    });
-    out.push(line);
-    out.push(`Total: $${Number(factura?.total || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`);
-    if (Array.isArray(pagos) && pagos.length > 0) {
-        out.push('Pagos:');
-        pagos.forEach((p) => {
-            const metodo = String(p?.metodo || '').trim();
-            const ref = String(p?.referencia || '').trim();
-            out.push(`${metodo}: $${Number(p?.monto || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}${ref ? ` (${ref})` : ''}`);
-        });
-    }
-    out.push(line);
-    out.push(String(negocio?.pie_pagina || 'Gracias por su compra'));
-    out.push('\n\n');
-    return out.join('\r\n');
-}
-
 async function accionesPostPagoMesa({ facturaId, pagos, mesaNumero }) {
     const result = {
         cash_drawer_opened: false,
@@ -1193,20 +1205,23 @@ async function accionesPostPagoMesa({ facturaId, pagos, mesaNumero }) {
                  ORDER BY d.id`,
                 [facturaId]
             );
-            const texto = buildFacturaMesaTexto({
+            const ticket = buildTicketSvg({
                 factura: facturas?.[0] || { id: facturaId },
                 detalles,
                 pagos,
                 negocio: config,
-                mesaNumero
-            });
-            await printText(texto, {
-                printerName,
-                copies: Math.max(1, Number(config?.factura_copias || 1) || 1),
+                mesaNumero,
                 paperWidthMm: anchoPapel,
-                fontSize,
-                jobPrefix: 'factura-mesa'
+                fontSize
             });
+            const copias = Math.max(1, Number(config?.factura_copias || 1) || 1);
+            for (let copy = 0; copy < copias; copy += 1) {
+                await printTicket(ticket, {
+                    printerName,
+                    jobPrefix: 'factura-mesa',
+                    dedupeKey: `factura:${facturaId}:copia:${copy}`
+                });
+            }
             result.printed = true;
         } catch (error) {
             result.print_error = String(error?.message || error || 'No se pudo imprimir la factura');
@@ -1270,11 +1285,22 @@ router.get('/pedidos/:pedidoId/cuenta', async (req, res) => {
         const config = configRows?.[0] || { ancho_papel: 80, font_size: 1 };
         if (config.logo_data) config.logo_src = `data:image/${config.logo_tipo};base64,${Buffer.from(config.logo_data).toString('base64')}`;
         if (config.qr_data) config.qr_src = `data:image/${config.qr_tipo};base64,${Buffer.from(config.qr_data).toString('base64')}`;
+        const facturaCuenta = { id: `Mesa ${pedido.mesa_numero}`, fecha: new Date(), total: totalActual, forma_pago: borrador.forma_pago };
+        const ticket = buildTicketSvg({
+            factura: facturaCuenta,
+            detalles,
+            pagos: borrador.pagos,
+            negocio: config,
+            mesaNumero: pedido.mesa_numero,
+            esCuenta: true,
+            paperWidthMm: Number(config?.ancho_papel || 58),
+            fontSize: Number(config?.font_size || 1)
+        });
         res.render('factura', {
-            factura: { id: `CUENTA · Mesa ${pedido.mesa_numero}`, fecha: new Date(), total: totalActual, forma_pago: borrador.forma_pago },
+            factura: facturaCuenta,
             detalles, config, pagos: borrador.pagos, es_cuenta: true, pedido_id: pedidoId,
             cuenta_desactualizada: Math.abs(Number(borrador.total) - totalActual) >= 0.01 || JSON.stringify(borrador.items_firma || []) !== JSON.stringify(firmaItemsCuenta(detalles)),
-            return_to: '/mesas', embed: false
+            return_to: '/mesas', embed: false, ticket_svg_data_uri: ticket.dataUri
         });
     } catch (error) {
         console.error('Error al mostrar cuenta:', error);
@@ -1326,23 +1352,33 @@ router.post('/pedidos/:pedidoId/cuenta/imprimir-servidor', async (req, res) => {
         const [configRows] = await db.query('SELECT * FROM configuracion_impresion LIMIT 1');
         const config = configRows?.[0] || {};
         const printerName = resolvePrinterName(config?.impresora_facturas);
-        const texto = buildFacturaMesaTexto({
+        const pagosCuenta = normalizarPagosCuenta(borrador.pagos);
+        const ticket = buildTicketSvg({
             factura: { id: `Mesa ${pedido.mesa_numero}`, fecha: new Date(), total: totalActual },
             detalles,
-            pagos: normalizarPagosCuenta(borrador.pagos),
+            pagos: pagosCuenta,
             negocio: config,
             mesaNumero: pedido.mesa_numero,
-            esCuenta: true
-        });
-
-        await printText(texto, {
-            printerName,
-            copies: Math.max(1, Number(config?.factura_copias || 1) || 1),
+            esCuenta: true,
             paperWidthMm: Number(config?.ancho_papel || 58),
-            fontSize: Number(config?.font_size || 1),
-            jobPrefix: 'cuenta-mesa'
+            fontSize: Number(config?.font_size || 1)
         });
-        res.json({ printed: true, impresora: printerName, copias: Math.max(1, Number(config?.factura_copias || 1) || 1) });
+        const copias = Math.max(1, Number(config?.factura_copias || 1) || 1);
+        const jobs = [];
+        for (let copy = 0; copy < copias; copy += 1) {
+            jobs.push(await printTicket(ticket, {
+                printerName,
+                jobPrefix: 'cuenta-mesa',
+                dedupeKey: `cuenta:${pedidoId}:${borrador.actualizado_en || borrador.total}:copia:${copy}`
+            }));
+        }
+        res.json({
+            printed: true,
+            impresora: printerName,
+            copias,
+            job_id: jobs[0]?.job_id || null,
+            duplicate_suppressed: jobs.every(job => job?.duplicate_suppressed)
+        });
     } catch (error) {
         console.error('Error al imprimir cuenta provisional:', error);
         res.status(500).json({ error: 'No se pudo imprimir la cuenta en el servidor' });
