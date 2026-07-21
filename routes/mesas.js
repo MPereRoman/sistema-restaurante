@@ -523,7 +523,11 @@ router.get('/pedidos/:pedidoId/comanda', async (req, res) => {
         const config = cfgRows?.[0] || { nombre_negocio: 'Comanda', direccion: '', telefono: '', ancho_papel: 80, font_size: 1 };
 
         const [pedidos] = await db.query(
-            `SELECT p.*, m.numero AS mesa_numero
+            `SELECT p.*, m.numero AS mesa_numero,
+                    (SELECT COUNT(*)
+                     FROM pedidos p_semana
+                     WHERE YEARWEEK(p_semana.created_at, 3) = YEARWEEK(p.created_at, 3)
+                       AND p_semana.id <= p.id) AS numero_pedido_semanal
              FROM pedidos p
              JOIN mesas m ON m.id = p.mesa_id
              WHERE p.id = ?
@@ -636,7 +640,11 @@ router.post('/pedidos/:pedidoId/comanda/imprimir-servidor', async (req, res) => 
         const fontSize    = Number(cfg?.font_size   || 1);
 
         const [pedidos] = await db.query(
-            `SELECT p.*, m.numero AS mesa_numero
+            `SELECT p.*, m.numero AS mesa_numero,
+                    (SELECT COUNT(*)
+                     FROM pedidos p_semana
+                     WHERE YEARWEEK(p_semana.created_at, 3) = YEARWEEK(p.created_at, 3)
+                       AND p_semana.id <= p.id) AS numero_pedido_semanal
              FROM pedidos p
              JOIN mesas m ON m.id = p.mesa_id
              WHERE p.id = ?

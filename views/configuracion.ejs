@@ -355,9 +355,9 @@
 
                     <!-- ---- COMANDA ---- -->
                     <h5 class="mb-1 text-muted fw-normal">
-                        <i class="bi bi-receipt me-1"></i>Comanda (cocina)
+                        <i class="bi bi-receipt me-1"></i>Comandas (Cocina y Barra)
                     </h5>
-                    <p class="text-muted small mb-3">Configuración del ticket que va a la cocina al enviar un pedido.</p>
+                    <p class="text-muted small mb-3">Configuración compartida del envío; cada área puede usar una impresora distinta.</p>
 
                     <div class="row g-3 mb-3">
                         <!-- Switches de comanda -->
@@ -370,12 +370,12 @@
                                                name="cocina_auto_listo_comanda" value="1"
                                                <%= Number(config.cocina_auto_listo_comanda || 0) === 1 ? 'checked' : '' %>>
                                         <label class="form-check-label fw-semibold" for="cfgCocinaAutoListoComanda">
-                                            Cocina sin pantalla
+                                            Cocina y Barra sin pantalla
                                         </label>
                                     </div>
                                     <p class="small text-muted mb-0">
-                                        Al enviar un pedido, imprime la comanda y marca los ítems como
-                                        <strong>Listo</strong> automáticamente. Ideal cuando la cocina no usa una pantalla.
+                                        Al enviar un pedido, imprime las comandas correspondientes y marca los ítems como
+                                        <strong>Listo</strong> automáticamente. Este modo se comparte entre ambas áreas.
                                     </p>
                                 </div>
                             </div>
@@ -389,12 +389,12 @@
                                                name="cocina_imprime_servidor" value="1"
                                                <%= Number(config.cocina_imprime_servidor || 0) === 1 ? 'checked' : '' %>>
                                         <label class="form-check-label fw-semibold" for="cfgCocinaImprimeServidor">
-                                            Imprimir en Raspberry
+                                            Imprimir mediante Raspberry
                                         </label>
                                     </div>
                                     <p class="small text-muted mb-0">
-                                        Cuando el mesero toma el pedido desde un celular/tablet, la Raspberry imprime la comanda
-                                        directamente mediante CUPS.
+                                        Envía las comandas a CUPS desde la Raspberry, sin abrir el diálogo de impresión del celular.
+                                        Cocina y Barra se separan automáticamente según el tipo de producto.
                                     </p>
                                 </div>
                             </div>
@@ -448,6 +448,10 @@
                             </a>
                         </div>
                     </div>
+                    <p class="small text-muted mb-3">
+                        <strong>Destino independiente:</strong> Alimentos usan la impresora de Cocina y bebidas la de Barra.
+                        Si Barra queda sin impresora seleccionada, utilizará la impresora de Cocina.
+                    </p>
                     <div id="resultadoTestComanda" class="mb-3" style="display:none;"></div>
 
                     <hr class="my-4">

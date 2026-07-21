@@ -167,49 +167,46 @@ function buildComandaSvg({ pedido, items, negocio, area, paperWidthMm = 58, font
     const width = Number(paperWidthMm || 58) <= 58 ? 384 : 576;
     const baseFont = Number(fontSize || 1) === 2 ? 28 : 24;
     const layout = layoutFactory(width, baseFont);
-    layout.addText(negocio || 'BISTRO CIENTO44', { align: 'center', bold: true, size: baseFont + 5 });
-    layout.addDivider();
     const metaY = layout.getY() + baseFont + 12;
     layout.addRaw(`<text x="${layout.margin}" y="${metaY}" font-size="${baseFont - 4}">MESA</text>`);
     layout.addRaw(`<text x="${layout.margin}" y="${metaY + baseFont + 8}" font-size="${baseFont + 12}" font-weight="700">#${escapeXml(pedido?.mesa_numero ?? '-')}</text>`);
     layout.addRaw(`<text x="${width - layout.margin}" y="${metaY}" text-anchor="end" font-size="${baseFont - 4}">MESERO</text>`);
     layout.addRaw(`<text x="${width - layout.margin}" y="${metaY + baseFont + 8}" text-anchor="end" font-size="${baseFont}" font-weight="700">${escapeXml(pedido?.mesero_nombre || 'Sin asignar')}</text>`);
     layout.advance((baseFont * 2) + 25);
-    layout.addText(`Pedido #${pedido?.id ?? '-'} · ${formatDateTime()}`, { align: 'center', size: baseFont - 5 });
+    const numeroPedido = pedido?.numero_pedido_semanal ?? pedido?.id ?? '-';
+    layout.addText(`Pedido #${numeroPedido} · ${formatDateTime()}`, { align: 'center', size: baseFont - 5 });
     layout.addDivider();
-    layout.addText(area || 'COMANDA', { align: 'center', bold: true, size: baseFont + 7, after: 6 });
 
     (items || []).forEach((item) => {
         const qty = money(item?.cantidad);
-        const nameLines = wrapText(item?.producto_nombre || '', Math.max(12, Math.floor((width - 105) / (baseFont * 0.58))));
-        const noteLines = String(item?.nota || '').trim() ? wrapText(`⚠ ${item.nota}`, Math.max(12, Math.floor((width - 105) / ((baseFont - 4) * 0.58)))) : [];
+        const productX = layout.margin + 54;
+        const nameLines = wrapText(item?.producto_nombre || '', Math.max(12, Math.floor((width - productX - layout.margin) / (baseFont * 0.58))));
+        const noteLines = String(item?.nota || '').trim() ? wrapText(`⚠ ${item.nota}`, Math.max(12, Math.floor((width - productX - layout.margin) / ((baseFont - 4) * 0.58)))) : [];
         const rowHeight = Math.max(58, (nameLines.length * (baseFont + 4)) + (noteLines.length * baseFont) + 16);
         const top = layout.getY() + 8;
-        layout.addRaw(`<rect x="${layout.margin}" y="${top}" width="64" height="44" rx="4" fill="#000"/>`);
-        layout.addRaw(`<text x="${layout.margin + 32}" y="${top + 31}" text-anchor="middle" fill="#fff" font-size="${baseFont + 2}" font-weight="700">${escapeXml(qty)}</text>`);
+        layout.addRaw(`<text x="${layout.margin + 22}" y="${top + 34}" text-anchor="middle" fill="#000" font-size="${baseFont + 8}" font-weight="700">${escapeXml(qty)}</text>`);
         let textY = top + baseFont;
         nameLines.forEach(line => {
-            layout.addRaw(`<text x="${layout.margin + 78}" y="${textY}" font-size="${baseFont}" font-weight="700">${escapeXml(line)}</text>`);
+            layout.addRaw(`<text x="${productX}" y="${textY}" font-size="${baseFont}" font-weight="700">${escapeXml(line)}</text>`);
             textY += baseFont + 4;
         });
         noteLines.forEach(line => {
-            layout.addRaw(`<text x="${layout.margin + 78}" y="${textY}" font-size="${baseFont - 4}" font-weight="700">${escapeXml(line)}</text>`);
+            layout.addRaw(`<text x="${productX}" y="${textY}" font-size="${baseFont - 4}" font-weight="700">${escapeXml(line)}</text>`);
             textY += baseFont;
         });
         layout.addRaw(`<line x1="${layout.margin}" x2="${width - layout.margin}" y1="${top + rowHeight}" y2="${top + rowHeight}" stroke="#777" stroke-width="1" stroke-dasharray="3 4"/>`);
         layout.advance(rowHeight + 10);
     });
-    layout.addDivider();
-    layout.addText('Fin de comanda', { align: 'center', bold: true });
-    // La comanda no necesita tanto papel para corte manual como la factura.
-    layout.advance(45);
+    layout.addDivider({ before: 6, after: 4 });
+    // Espacio mínimo para corte manual: la mitad del margen anterior.
+    layout.advance(22);
 
     const height = Math.ceil(layout.getY());
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
 <rect width="100%" height="100%" fill="#fff"/>
 <g fill="#000" font-family="DejaVu Sans, Arial, sans-serif">${layout.elements.join('\n')}</g>
 </svg>`;
-    return { svg, width, height, feedLines: 3, dataUri: svgDataUri(svg) };
+    return { svg, width, height, feedLines: 2, dataUri: svgDataUri(svg) };
 }
 
 function execFileBuffer(file, args, timeout = 30000) {
