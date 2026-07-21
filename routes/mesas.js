@@ -58,19 +58,20 @@ function getMeseroNombre(sessionUser) {
     return nombre;
 }
 
-// Configuración operativa de Cocina:
-// - auto_listo_comanda: al enviar desde Mesas el item pasa directo a "listo".
+// Configuración operativa por área:
+// - auto_listo_cocina / auto_listo_barra: los items de esa área pasan directo a "listo".
 // - imprime_servidor: la comanda se imprime en el servidor (no en el navegador del celular).
 async function getEnvioCocinaConfig(executor) {
     const q = executor && typeof executor.query === 'function' ? executor : db;
     try {
         const [rows] = await q.query(
-            `SELECT cocina_auto_listo_comanda, cocina_imprime_servidor, impresora_comandas, impresora_comandas_barra
+            `SELECT cocina_auto_listo_comanda, barra_auto_listo_comanda, cocina_imprime_servidor, impresora_comandas, impresora_comandas_barra
              FROM configuracion_impresion
              LIMIT 1`
         );
         return {
-            auto_listo_comanda: Number(rows?.[0]?.cocina_auto_listo_comanda || 0) === 1,
+            auto_listo_cocina: Number(rows?.[0]?.cocina_auto_listo_comanda || 0) === 1,
+            auto_listo_barra: Number(rows?.[0]?.barra_auto_listo_comanda || 0) === 1,
             imprime_servidor: Number(rows?.[0]?.cocina_imprime_servidor || 0) === 1,
             impresora_comandas: String(rows?.[0]?.impresora_comandas || '').trim() || null,
             impresora_comandas_barra: String(rows?.[0]?.impresora_comandas_barra || '').trim() || null
@@ -80,9 +81,11 @@ async function getEnvioCocinaConfig(executor) {
         if (String(e?.code || '') === 'ER_BAD_FIELD_ERROR') {
             const [rows] = await q.query('SELECT cocina_auto_listo_comanda FROM configuracion_impresion LIMIT 1');
             return {
-                auto_listo_comanda: Number(rows?.[0]?.cocina_auto_listo_comanda || 0) === 1,
+                auto_listo_cocina: Number(rows?.[0]?.cocina_auto_listo_comanda || 0) === 1,
+                auto_listo_barra: Number(rows?.[0]?.cocina_auto_listo_comanda || 0) === 1,
                 imprime_servidor: false,
-                impresora_comandas: null
+                impresora_comandas: null,
+                impresora_comandas_barra: null
             };
         }
         throw e;
@@ -257,7 +260,8 @@ router.get('/config/envio-cocina', async (req, res) => {
     try {
         const conf = await getEnvioCocinaConfig();
         res.json({
-            auto_listo_comanda: !!conf.auto_listo_comanda,
+            auto_listo_cocina: !!conf.auto_listo_cocina,
+            auto_listo_barra: !!conf.auto_listo_barra,
             imprime_servidor: !!conf.imprime_servidor
         });
     } catch (error) {
@@ -416,7 +420,8 @@ router.post('/abrir', async (req, res) => {
                 connection.release();
                 return res.json({
                     pedido: existentes[0],
-                    auto_listo_comanda: !!conf.auto_listo_comanda,
+                    auto_listo_cocina: !!conf.auto_listo_cocina,
+                    auto_listo_barra: !!conf.auto_listo_barra,
                     imprime_servidor: !!conf.imprime_servidor
                 });
             }
@@ -454,7 +459,8 @@ router.post('/abrir', async (req, res) => {
                     total: 0,
                     notas: notas || null
                 },
-                auto_listo_comanda: !!conf.auto_listo_comanda,
+                auto_listo_cocina: !!conf.auto_listo_cocina,
+                auto_listo_barra: !!conf.auto_listo_barra,
                 imprime_servidor: !!conf.imprime_servidor
             });
         } catch (error) {
@@ -476,7 +482,7 @@ router.get('/pedidos/:pedidoId', async (req, res) => {
         if (pedidos.length === 0) return res.status(404).json({ error: 'Pedido no encontrado' });
         const pedido = pedidos[0];
         const [items] = await db.query(`
-            SELECT i.*, p.nombre AS producto_nombre 
+            SELECT i.*, p.nombre AS producto_nombre, p.tipo_preparacion
             FROM pedido_items i
             JOIN productos p ON p.id = i.producto_id
             WHERE i.pedido_id = ?
@@ -888,8 +894,9 @@ router.put('/items/:itemId/enviar', async (req, res) => {
             await connection.beginTransaction();
 
             const [itemRows] = await connection.query(
-                `SELECT i.id, i.pedido_id, i.estado
+                `SELECT i.id, i.pedido_id, i.estado, pr.tipo_preparacion
                  FROM pedido_items i
+                 JOIN productos pr ON pr.id = i.producto_id
                  WHERE i.id = ?
                  LIMIT 1
                  FOR UPDATE`,
@@ -908,7 +915,8 @@ router.put('/items/:itemId/enviar', async (req, res) => {
 
             const pedidoId = Number(itemRows[0].pedido_id);
             const conf = await getEnvioCocinaConfig(connection);
-            const autoListoComanda = !!conf.auto_listo_comanda;
+            const esBebida = String(itemRows[0].tipo_preparacion || 'alimento') === 'bebida';
+            const autoListoComanda = esBebida ? !!conf.auto_listo_barra : !!conf.auto_listo_cocina;
             const targetEstado = autoListoComanda ? 'listo' : 'enviado';
             await connection.query(
                 `UPDATE pedido_items
@@ -930,9 +938,10 @@ router.put('/items/:itemId/enviar', async (req, res) => {
             await connection.commit();
             connection.release();
             res.json({
-                message: autoListoComanda ? 'Item enviado e iniciado como listo' : 'Item enviado a cocina',
+                message: autoListoComanda ? 'Item enviado e iniciado como listo' : `Item enviado a ${esBebida ? 'barra' : 'cocina'}`,
                 estado: targetEstado,
-                auto_listo_comanda: autoListoComanda
+                auto_listo_comanda: autoListoComanda,
+                area: esBebida ? 'barra' : 'cocina'
             });
         } catch (err) {
             await connection.rollback();

@@ -60,6 +60,7 @@ router.get('/', async (req, res) => {
                     ancho_papel: 80,
                     font_size: 1,
                     cocina_auto_listo_comanda: 0,
+                    barra_auto_listo_comanda: 0,
                     cocina_imprime_servidor: 0,
                     impresora_comandas: '',
                     impresora_comandas_barra: '',
@@ -112,6 +113,7 @@ router.post('/', upload.fields([
             ancho_papel,
             font_size,
             cocina_auto_listo_comanda,
+            barra_auto_listo_comanda,
             cocina_imprime_servidor,
             impresora_comandas,
             impresora_comandas_barra,
@@ -133,6 +135,7 @@ router.post('/', upload.fields([
             ancho_papel || 80,
             font_size || 1,
             Number(String(cocina_auto_listo_comanda || '0')) ? 1 : 0,
+            Number(String(barra_auto_listo_comanda || '0')) ? 1 : 0,
             Number(String(cocina_imprime_servidor || '0')) ? 1 : 0,
             String(impresora_comandas || '').trim() || null,
             String(impresora_comandas_barra || '').trim() || null,
@@ -152,7 +155,7 @@ router.post('/', upload.fields([
             let sql = `
                 INSERT INTO configuracion_impresion 
                 (nombre_negocio, direccion, telefono, nit, pie_pagina, datos_transferencia,
-                 ancho_papel, font_size, cocina_auto_listo_comanda, cocina_imprime_servidor,
+                 ancho_papel, font_size, cocina_auto_listo_comanda, barra_auto_listo_comanda, cocina_imprime_servidor,
                  impresora_comandas, impresora_comandas_barra, impresora_facturas, factura_imprime_servidor, factura_copias, factura_auto_print
             `;
             if (req.files?.logo) sql += ', logo_data, logo_tipo';
@@ -164,7 +167,7 @@ router.post('/', upload.fields([
             let sql = `
                 UPDATE configuracion_impresion 
                 SET nombre_negocio = ?, direccion = ?, telefono = ?, nit = ?,
-                    pie_pagina = ?, datos_transferencia = ?, ancho_papel = ?, font_size = ?, cocina_auto_listo_comanda = ?, cocina_imprime_servidor = ?,
+                    pie_pagina = ?, datos_transferencia = ?, ancho_papel = ?, font_size = ?, cocina_auto_listo_comanda = ?, barra_auto_listo_comanda = ?, cocina_imprime_servidor = ?,
                     impresora_comandas = ?, impresora_comandas_barra = ?, impresora_facturas = ?, factura_imprime_servidor = ?, factura_copias = ?, factura_auto_print = ?
             `;
             if (req.files?.logo) sql += ', logo_data = ?, logo_tipo = ?';

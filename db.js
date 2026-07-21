@@ -75,6 +75,24 @@ async function ensureSchema() {
             `ALTER TABLE configuracion_impresion
              ADD COLUMN IF NOT EXISTS impresora_comandas_barra VARCHAR(150) NULL AFTER impresora_comandas`
         );
+        const [barraAutoListoCols] = await pool.query(
+            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'configuracion_impresion'
+               AND COLUMN_NAME = 'barra_auto_listo_comanda'`
+        );
+        const barraAutoListoNueva = !barraAutoListoCols.length;
+        await pool.query(
+            `ALTER TABLE configuracion_impresion
+             ADD COLUMN IF NOT EXISTS barra_auto_listo_comanda TINYINT(1) NOT NULL DEFAULT 0 AFTER cocina_auto_listo_comanda`
+        );
+        if (barraAutoListoNueva) {
+            // La opción anterior era compartida: al migrar, conservar su valor en ambas áreas.
+            await pool.query(
+                `UPDATE configuracion_impresion
+                 SET barra_auto_listo_comanda = cocina_auto_listo_comanda`
+            );
+        }
         await pool.query(
             `ALTER TABLE configuracion_impresion
              ADD COLUMN IF NOT EXISTS datos_transferencia VARCHAR(255) NULL AFTER pie_pagina`

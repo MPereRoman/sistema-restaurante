@@ -5,7 +5,7 @@ $(function() {
   const canvas = new bootstrap.Offcanvas('#canvasPedido');
   let pedidoActual = null; // { id, mesa_id }
   let items = []; // items del pedido en UI
-  let autoListoComanda = false; // configuración global de flujo de cocina
+  let autoListoComanda = { alimento: false, bebida: false }; // flujo independiente por área
   let imprimeServidor = false; // impresión de comanda en PC/servidor
   // Rol actual (inyectado desde views/mesas.ejs)
   // Relacionado con: views/mesas.ejs (window.__USER_ROLE__) y server.js (protección de rutas)
@@ -408,7 +408,11 @@ $(function() {
       }
       if(!resp.ok) throw new Error(data.error||'Error al abrir pedido');
       pedidoActual = data.pedido;
-      autoListoComanda = !!data.auto_listo_comanda;
+      const legadoAutoListo = !!data.auto_listo_comanda;
+      autoListoComanda = {
+        alimento: data.auto_listo_cocina == null ? legadoAutoListo : !!data.auto_listo_cocina,
+        bebida: data.auto_listo_barra == null ? legadoAutoListo : !!data.auto_listo_barra
+      };
       imprimeServidor = !!data.imprime_servidor;
       $('#pedidoMesa').text(mesaNumero);
       $('#pedidoPersonas').text(Math.max(1, Number(pedidoActual.numero_personas || 1)));
@@ -951,45 +955,73 @@ $(function() {
         return Swal.fire({icon:'info', title:'No hay items pendientes para enviar'});
       }
       const itemIdsEnviados = pendientes.map(it => Number(it.id)).filter(n => Number.isFinite(n) && n > 0);
-      let printWindow = null;
-      if (autoListoComanda && !imprimeServidor) {
-        // Abrimos ventana antes de awaits para evitar bloqueo de popup por el navegador.
-        printWindow = window.open('about:blank', '_blank');
+      const gruposAuto = [
+        {
+          area: 'alimento',
+          ids: pendientes
+            .filter(it => String(it.tipo_preparacion || 'alimento') !== 'bebida' && autoListoComanda.alimento)
+            .map(it => Number(it.id)).filter(n => Number.isFinite(n) && n > 0)
+        },
+        {
+          area: 'bebida',
+          ids: pendientes
+            .filter(it => String(it.tipo_preparacion || 'alimento') === 'bebida' && autoListoComanda.bebida)
+            .map(it => Number(it.id)).filter(n => Number.isFinite(n) && n > 0)
+        }
+      ].filter(grupo => grupo.ids.length > 0);
+      const itemIdsAuto = gruposAuto.flatMap(grupo => grupo.ids);
+      const printWindows = [];
+      if (gruposAuto.length > 0 && !imprimeServidor) {
+        // Abrimos una ventana por área antes de los awaits para evitar bloqueo de popups.
+        gruposAuto.forEach(grupo => {
+          printWindows.push({ area: grupo.area, ventana: window.open('about:blank', '_blank') });
+        });
       }
       for(const it of pendientes){
-        await fetch(`/api/mesas/items/${it.id}/enviar`, { method:'PUT' });
+        const rEnviar = await fetch(`/api/mesas/items/${it.id}/enviar`, { method:'PUT' });
+        if(!rEnviar.ok) {
+          const dEnviar = await rEnviar.json().catch(() => ({}));
+          throw new Error(dEnviar.error || 'No se pudo enviar un producto');
+        }
       }
 
-      // Modo cocina sin dispositivo:
-      // - imprimir comanda automáticamente al enviar
-      if (autoListoComanda && pedidoActual && pedidoActual.id && itemIdsEnviados.length > 0) {
+      // Modos sin pantalla: imprimir únicamente las áreas activadas.
+      if (gruposAuto.length > 0 && pedidoActual && pedidoActual.id && itemIdsAuto.length > 0) {
         if (imprimeServidor) {
           const rPrint = await fetch(`/api/mesas/pedidos/${encodeURIComponent(pedidoActual.id)}/comanda/imprimir-servidor`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_ids: itemIdsEnviados })
+            body: JSON.stringify({ item_ids: itemIdsAuto })
           });
           const dPrint = await rPrint.json().catch(() => ({}));
           if(!rPrint.ok) throw new Error(dPrint.error || 'No se pudo imprimir en servidor');
         } else {
-          const query = new URLSearchParams({
-            item_ids: itemIdsEnviados.join(','),
-            auto_print: '1'
+          gruposAuto.forEach(grupo => {
+            const query = new URLSearchParams({
+              item_ids: grupo.ids.join(','),
+              auto_print: '1',
+              marcar_impresos: '1'
+            });
+            const urlComanda = `/api/mesas/pedidos/${encodeURIComponent(pedidoActual.id)}/comanda?${query.toString()}`;
+            const printWindow = printWindows.find(x => x.area === grupo.area)?.ventana;
+            if (printWindow && !printWindow.closed) {
+              try { printWindow.location.href = urlComanda; } catch (_) {}
+            } else {
+              // Fallback si el popup fue bloqueado.
+              window.open(urlComanda, '_blank');
+            }
           });
-          const urlComanda = `/api/mesas/pedidos/${encodeURIComponent(pedidoActual.id)}/comanda?${query.toString()}`;
-          if (printWindow && !printWindow.closed) {
-            try { printWindow.location.href = urlComanda; } catch (_) {}
-          } else {
-            // Fallback si el popup fue bloqueado.
-            window.open(urlComanda, '_blank');
-          }
         }
       }
 
       await cargarPedido(pedidoActual.id);
       Swal.fire({
         icon:'success',
-        title: autoListoComanda ? 'Comanda impresa y pedido en Listos' : 'Enviado a cocina'
+        title: gruposAuto.length > 0
+          ? (itemIdsAuto.length === itemIdsEnviados.length
+              ? 'Comandas impresas y productos en Listos'
+              : 'Pedido enviado y comanda automática impresa')
+          : 'Pedido enviado'
       });
     }catch(err){
       Swal.fire({icon:'error', title:'No se pudo enviar a cocina'});

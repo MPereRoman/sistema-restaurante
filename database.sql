@@ -109,9 +109,10 @@ CREATE TABLE IF NOT EXISTS configuracion_impresion (
     logo_tipo VARCHAR(50),
     qr_data LONGBLOB,
     qr_tipo VARCHAR(50),
-    -- Modo operativo: cocina sin dispositivo.
-    -- Si está activo, al enviar desde Mesas se imprime comanda y el item pasa directo a "listo".
+    -- Modos operativos independientes para áreas sin pantalla.
+    -- Si están activos, se imprime la comanda de esa área y sus items pasan directo a "listo".
     cocina_auto_listo_comanda TINYINT(1) NOT NULL DEFAULT 0,
+    barra_auto_listo_comanda TINYINT(1) NOT NULL DEFAULT 0,
     -- Si está activo, la comanda se imprime en el servidor (PC), no en el navegador del celular.
     cocina_imprime_servidor TINYINT(1) NOT NULL DEFAULT 0,
     -- Preferencias de impresión (referenciales en entorno web).
@@ -244,6 +245,9 @@ CREATE TABLE IF NOT EXISTS factura_pagos (
 -- 2.1) Modo cocina sin dispositivo (si la columna aún no existe)
 ALTER TABLE configuracion_impresion
     ADD COLUMN IF NOT EXISTS cocina_auto_listo_comanda TINYINT(1) NOT NULL DEFAULT 0;
+
+ALTER TABLE configuracion_impresion
+    ADD COLUMN IF NOT EXISTS barra_auto_listo_comanda TINYINT(1) NOT NULL DEFAULT 0 AFTER cocina_auto_listo_comanda;
 
 ALTER TABLE configuracion_impresion
     ADD COLUMN IF NOT EXISTS cocina_imprime_servidor TINYINT(1) NOT NULL DEFAULT 0;

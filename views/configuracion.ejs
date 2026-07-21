@@ -293,6 +293,7 @@
                     <input type="hidden" name="ancho_papel"               value="<%= config.ancho_papel || 80 %>">
                     <input type="hidden" name="font_size"                 value="<%= config.font_size || 1 %>">
                     <input type="hidden" name="cocina_auto_listo_comanda" value="<%= Number(config.cocina_auto_listo_comanda || 0) %>">
+                    <input type="hidden" name="barra_auto_listo_comanda"  value="<%= Number(config.barra_auto_listo_comanda || 0) %>">
                     <input type="hidden" name="cocina_imprime_servidor"   value="<%= Number(config.cocina_imprime_servidor || 0) %>">
                     <input type="hidden" name="impresora_comandas"        value="<%= config.impresora_comandas || '' %>">
                     <input type="hidden" name="impresora_comandas_barra" value="<%= config.impresora_comandas_barra || '' %>">
@@ -357,10 +358,10 @@
                     <h5 class="mb-1 text-muted fw-normal">
                         <i class="bi bi-receipt me-1"></i>Comandas (Cocina y Barra)
                     </h5>
-                    <p class="text-muted small mb-3">Configuración compartida del envío; cada área puede usar una impresora distinta.</p>
+                    <p class="text-muted small mb-3">Cada área decide de forma independiente si trabaja con pantalla o con comanda impresa.</p>
 
                     <div class="row g-3 mb-3">
-                        <!-- Switches de comanda -->
+                        <!-- Modo de Cocina -->
                         <div class="col-md-4">
                             <div class="card border h-100">
                                 <div class="card-body">
@@ -370,17 +371,35 @@
                                                name="cocina_auto_listo_comanda" value="1"
                                                <%= Number(config.cocina_auto_listo_comanda || 0) === 1 ? 'checked' : '' %>>
                                         <label class="form-check-label fw-semibold" for="cfgCocinaAutoListoComanda">
-                                            Cocina y Barra sin pantalla
+                                            Cocina sin pantalla
                                         </label>
                                     </div>
                                     <p class="small text-muted mb-0">
-                                        Al enviar un pedido, imprime las comandas correspondientes y marca los ítems como
-                                        <strong>Listo</strong> automáticamente. Este modo se comparte entre ambas áreas.
+                                        Imprime únicamente los alimentos y los marca como <strong>Listo</strong> automáticamente.
                                     </p>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <!-- Modo de Barra -->
+                        <div class="col-md-4">
+                            <div class="card border h-100">
+                                <div class="card-body">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" role="switch"
+                                               id="cfgBarraAutoListoComanda"
+                                               name="barra_auto_listo_comanda" value="1"
+                                               <%= Number(config.barra_auto_listo_comanda || 0) === 1 ? 'checked' : '' %>>
+                                        <label class="form-check-label fw-semibold" for="cfgBarraAutoListoComanda">
+                                            Barra sin pantalla
+                                        </label>
+                                    </div>
+                                    <p class="small text-muted mb-0">
+                                        Imprime únicamente las bebidas y las marca como <strong>Listo</strong> automáticamente.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
                             <div class="card border h-100">
                                 <div class="card-body">
                                     <div class="form-check form-switch mb-3">
@@ -394,7 +413,7 @@
                                     </div>
                                     <p class="small text-muted mb-0">
                                         Envía las comandas a CUPS desde la Raspberry, sin abrir el diálogo de impresión del celular.
-                                        Cocina y Barra se separan automáticamente según el tipo de producto.
+                                        Se aplica a las áreas que tengan activado el modo sin pantalla; si ambas están activas, imprime ambas comandas.
                                     </p>
                                 </div>
                             </div>
@@ -881,6 +900,7 @@
         // Switches: cuando cambian en Impresión, actualizar hidden en Negocio
         var switches = [
             { real: 'cfgCocinaAutoListoComanda', hidName: 'cocina_auto_listo_comanda' },
+            { real: 'cfgBarraAutoListoComanda',  hidName: 'barra_auto_listo_comanda'  },
             { real: 'cfgCocinaImprimeServidor',  hidName: 'cocina_imprime_servidor'   },
             { real: 'cfgFacturaImprimeServidor',  hidName: 'factura_imprime_servidor'  },
             { real: 'cfgFacturaAutoPrint',        hidName: 'factura_auto_print'        },
