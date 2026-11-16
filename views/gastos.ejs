@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gastos y caja</title>
+    <link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.css">
+    <style>
+        body { background:#f8f9fa; min-height:100vh; }
+        .metric-card { border:0; border-left:4px solid #0d6efd; box-shadow:0 .25rem .75rem rgba(0,0,0,.06); }
+        .metric-card.expense { border-left-color:#dc3545; }
+        .metric-card.result { border-left-color:#198754; }
+        .metric-card.cash { border-left-color:#fd7e14; }
+        .metric-label { color:#6c757d; font-size:.75rem; letter-spacing:.04em; text-transform:uppercase; }
+        .metric-value { font-size:1.55rem; font-weight:700; }
+    </style>
+</head>
+<body>
+    <%- include('partials/navbar') %>
+    <main class="container pb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div>
+                <h1 class="h3 mb-1">Gastos y caja</h1>
+                <p class="text-muted mb-0">Registra compras, fondo inicial y consulta el saldo del día.</p>
+            </div>
+            <div class="input-group" style="max-width:240px">
+                <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                <input id="fechaCaja" type="date" class="form-control" value="<%= fechaHoy %>">
+            </div>
+        </div>
+
+        <div id="alertaCaja" class="alert d-none" role="alert"></div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-xl-3"><div class="card metric-card h-100"><div class="card-body"><div class="metric-label">Ventas</div><div id="mVentas" class="metric-value">$0</div></div></div></div>
+            <div class="col-6 col-xl-3"><div class="card metric-card expense h-100"><div class="card-body"><div class="metric-label">Gastos</div><div id="mGastos" class="metric-value">$0</div></div></div></div>
+            <div class="col-6 col-xl-3"><div class="card metric-card result h-100"><div class="card-body"><div class="metric-label">Resultado operativo</div><div id="mResultado" class="metric-value">$0</div></div></div></div>
+            <div class="col-6 col-xl-3"><div class="card metric-card cash h-100"><div class="card-body"><div class="metric-label">Caja estimada</div><div id="mCaja" class="metric-value">$0</div></div></div></div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-12 col-lg-4">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white fw-semibold"><i class="bi bi-cash-stack me-2"></i>Fondo inicial</div>
+                    <div class="card-body">
+                        <label class="form-label" for="fondoMonto">Saldo previo a la primera venta</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input id="fondoMonto" type="number" class="form-control" min="0" step="0.01" value="0">
+                            <button id="guardarFondo" class="btn btn-outline-primary">Guardar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white fw-semibold"><i class="bi bi-bag-plus me-2"></i>Registrar gasto</div>
+                    <div class="card-body">
+                        <form id="formGasto">
+                            <div class="mb-3">
+                                <label class="form-label" for="gastoConcepto">Concepto</label>
+                                <input id="gastoConcepto" class="form-control" maxlength="200" required placeholder="Ej: compra de leche">
+                            </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="form-label" for="gastoTotal">Total</label>
+                                    <div class="input-group"><span class="input-group-text">$</span><input id="gastoTotal" type="number" class="form-control" min="0.01" step="0.01" required></div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label" for="gastoMetodo">Pagado con</label>
+                                    <select id="gastoMetodo" class="form-select">
+                                        <option value="efectivo">Efectivo</option>
+                                        <option value="transferencia">Transferencia</option>
+                                        <option value="tarjeta">Tarjeta</option>
+                                        <option value="otro">Otro</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button class="btn btn-danger w-100" type="submit"><i class="bi bi-plus-lg me-1"></i>Registrar gasto</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-8">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold"><i class="bi bi-receipt-cutoff me-2"></i>Gastos del día</span>
+                        <span id="gastosCount" class="badge text-bg-secondary">0</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light"><tr><th>Concepto</th><th>Método</th><th class="text-end">Total</th><th></th></tr></thead>
+                            <tbody id="gastosTabla"></tbody>
+                        </table>
+                    </div>
+                    <div id="sinGastos" class="text-center text-muted p-4">No hay gastos registrados para esta fecha.</div>
+                </div>
+
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white fw-semibold"><i class="bi bi-clock-history me-2"></i>Cortes realizados</div>
+                    <div id="cortesLista" class="list-group list-group-flush"></div>
+                    <div id="sinCortes" class="text-center text-muted p-4">Aún no hay cortes para esta fecha.</div>
+                </div>
+            </div>
+        </div>
+    </main>
+    <%- include('partials/footer') %>
+    <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script>window.FECHA_HOY_CAJA = <%- JSON.stringify(fechaHoy) %>;</script>
+    <script src="/js/gastos.js"></script>
+</body>
+</html>

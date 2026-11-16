@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { openCashDrawer, resolvePrinterName } = require('../services/printer');
 const { buildComandaSvg, buildTicketSvg, printTicket } = require('../services/ticket-renderer');
+const { calculateVariantPricing } = require('../services/variant-pricing');
 
 // Rutas para gestión de mesas y pedidos de restaurante
 // - Renderiza la vista de mesas (GET /mesas)
@@ -56,6 +57,21 @@ function getMeseroNombre(sessionUser) {
     const usuario = String(sessionUser?.usuario || '').trim();
     if (!nombre || ['administrador', 'admin'].includes(nombre.toLowerCase())) return usuario || nombre || null;
     return nombre;
+}
+
+async function calcularPrecioConVariantes(connection, productoId, cantidad, variantes, requireActive = true) {
+    const [productos] = await connection.query(
+        `SELECT id, precio_unidad FROM productos WHERE id = ?${requireActive ? ' AND activo = 1' : ''} LIMIT 1`,
+        [productoId]
+    );
+    if (!productos.length) throw new Error('Producto no encontrado o archivado');
+
+    const qty = Number(cantidad);
+    const [variantesDisponibles] = await connection.query(
+        `SELECT id, costo_extra FROM producto_hijos_items WHERE producto_padre_id = ?`,
+        [productoId]
+    );
+    return calculateVariantPricing(productos[0].precio_unidad, qty, variantesDisponibles, variantes);
 }
 
 // Configuración operativa por área:
@@ -725,18 +741,18 @@ router.post('/pedidos/:pedidoId/comanda/imprimir-servidor', async (req, res) => 
 router.post('/pedidos/:pedidoId/items', async (req, res) => {
     try {
         const pedidoId = req.params.pedidoId;
-        const { producto_id, cantidad, unidad, precio, nota } = req.body || {};
-        if (!producto_id || !Number.isInteger(Number(cantidad)) || Number(cantidad) <= 0 || !precio) {
-            return res.status(400).json({ error: 'producto_id, cantidad y precio son requeridos' });
+        const { producto_id, cantidad, unidad, nota, variantes } = req.body || {};
+        if (!producto_id || !Number.isInteger(Number(cantidad)) || Number(cantidad) <= 0) {
+            return res.status(400).json({ error: 'producto_id y cantidad son requeridos' });
         }
-        const subtotal = Number(cantidad) * Number(precio);
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
+            const pricing = await calcularPrecioConVariantes(connection, producto_id, Number(cantidad), variantes, true);
             const [result] = await connection.query(
                 `INSERT INTO pedido_items (pedido_id, producto_id, cantidad, unidad_medida, precio_unitario, subtotal, estado, nota)
                  VALUES (?, ?, ?, ?, ?, ?, 'pendiente', ?)` ,
-                [pedidoId, producto_id, cantidad, unidad || 'UND', precio, subtotal, nota || null]
+                [pedidoId, producto_id, cantidad, unidad || 'UND', pricing.precioUnitario, pricing.subtotal, nota || null]
             );
             await connection.query('UPDATE pedidos SET pagos_borrador = NULL WHERE id = ?', [pedidoId]);
             const [pedidoRows] = await connection.query('SELECT mesa_id FROM pedidos WHERE id = ? LIMIT 1', [pedidoId]);
@@ -753,6 +769,10 @@ router.post('/pedidos/:pedidoId/items', async (req, res) => {
         }
     } catch (error) {
         console.error('Error al agregar item:', error);
+        const message = String(error?.message || 'Error al agregar item');
+        if (/variante|producto no encontrado|asigna exactamente/i.test(message)) {
+            return res.status(400).json({ error: message });
+        }
         res.status(500).json({ error: 'Error al agregar item' });
     }
 });
@@ -764,12 +784,12 @@ router.post('/pedidos/:pedidoId/items', async (req, res) => {
 router.put('/items/:itemId', async (req, res) => {
     try {
         const itemId = req.params.itemId;
-        const { cantidad, nota } = req.body || {};
+        const { cantidad, nota, variantes } = req.body || {};
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
             const [rows] = await connection.query(
-                `SELECT i.id, i.pedido_id, i.estado, i.cantidad, i.precio_unitario, i.nota
+                `SELECT i.id, i.pedido_id, i.producto_id, i.estado, i.cantidad, i.precio_unitario, i.nota
                  FROM pedido_items i
                  WHERE i.id = ?
                  LIMIT 1
@@ -789,14 +809,13 @@ router.put('/items/:itemId', async (req, res) => {
                 throw new Error('La cantidad debe ser un número entero mayor a 0');
             }
             const nuevaNota = (nota != null) ? String(nota).trim() : String(actual.nota || '').trim();
-            const precio = Number(actual.precio_unitario || 0);
-            const subtotal = nuevaCantidad * precio;
+            const pricing = await calcularPrecioConVariantes(connection, actual.producto_id, nuevaCantidad, variantes, false);
 
             await connection.query(
                 `UPDATE pedido_items
-                 SET cantidad = ?, subtotal = ?, nota = ?
+                 SET cantidad = ?, precio_unitario = ?, subtotal = ?, nota = ?
                  WHERE id = ? AND estado = 'pendiente'`,
-                [nuevaCantidad, subtotal, nuevaNota || null, itemId]
+                [nuevaCantidad, pricing.precioUnitario, pricing.subtotal, nuevaNota || null, itemId]
             );
             await connection.query('UPDATE pedidos SET pagos_borrador = NULL WHERE id = ?', [actual.pedido_id]);
 
@@ -815,7 +834,7 @@ router.put('/items/:itemId', async (req, res) => {
             if (msg.includes('no encontrado')) {
                 return res.status(404).json({ error: msg });
             }
-            if (msg.includes('pendientes') || msg.includes('cantidad')) {
+            if (/pendientes|cantidad|variante|producto no encontrado|asigna exactamente/i.test(msg)) {
                 return res.status(400).json({ error: msg });
             }
             throw err;

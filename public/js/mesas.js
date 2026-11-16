@@ -520,6 +520,7 @@ $(function() {
 
       let cantidad = 1;
       let notaFinal = '';
+      let variantesSeleccionadas = [];
 
       const tieneHijos = (Array.isArray(hijosItems) && hijosItems.length > 0) || (Array.isArray(hijosProductos) && hijosProductos.length > 0);
       if (!tieneHijos) {
@@ -564,8 +565,8 @@ $(function() {
         // - items: "nombre" (texto)
         // - productos: "nombre" (nombre producto hijo)
         const listaHijos = (Array.isArray(hijosItems) && hijosItems.length > 0)
-          ? hijosItems.map(it => ({ key: `i_${it.id}`, label: String(it.nombre || '').trim() }))
-          : (hijosProductos || []).map(pr => ({ key: `p_${pr.id}`, label: String(pr.nombre || '').trim() }));
+          ? hijosItems.map(it => ({ key: `i_${it.id}`, label: String(it.nombre || '').trim(), costo_extra: Number(it.costo_extra || 0) }))
+          : (hijosProductos || []).map(pr => ({ key: `p_${pr.id}`, label: String(pr.nombre || '').trim(), costo_extra: 0 }));
 
         const hijosHtml = renderSelectorVariantes(listaHijos, 'ph');
 
@@ -630,6 +631,7 @@ $(function() {
         cantidad = Number(result.value.qty);
         const obs = String(result.value.obs || '').trim();
         const variantes = Array.isArray(result.value.variantes) ? result.value.variantes : [];
+        variantesSeleccionadas = variantes;
 
         // Construir nota final: "Hijo1 / Hijo2 / Obs. ..."
         const mapLabel = new Map(listaHijos.map(h => [String(h.key), String(h.label || '').trim()]));
@@ -645,7 +647,7 @@ $(function() {
 
       const unidad = 'UND';
       const precio = p.precio_unidad;
-      const body = { producto_id: p.id, cantidad: Number(cantidad), unidad, precio: Number(precio), nota: notaFinal || '' };
+      const body = { producto_id: p.id, cantidad: Number(cantidad), unidad, precio: Number(precio), nota: notaFinal || '', variantes: variantesSeleccionadas };
       const resp = await fetch(`/api/mesas/pedidos/${pedidoActual.id}/items`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
       const data = await resp.json();
       if(!resp.ok) return Swal.fire({icon:'error', title: data.error||'Error al agregar'});
@@ -661,7 +663,7 @@ $(function() {
       const cantidad = Math.max(0, Number(cantidades[key] || 0));
       return `
         <div class="d-flex align-items-center gap-2 py-1 variante-row" data-variante-key="${escapeHtml(key)}">
-          <div class="flex-grow-1">${escapeHtml(v.label || '')}</div>
+          <div class="flex-grow-1">${escapeHtml(v.label || '')}${Number(v.costo_extra || 0) > 0 ? ` <span class="badge text-bg-light border">+$${Number(v.costo_extra).toLocaleString('es-MX')}</span>` : ''}</div>
           <button type="button" class="btn btn-sm btn-outline-secondary variante-btn" data-delta="-1" aria-label="Restar variante">−</button>
           <input type="text" class="form-control form-control-sm text-center variante-cantidad" value="${cantidad}" readonly style="width:48px">
           <button type="button" class="btn btn-sm btn-outline-primary variante-btn" data-delta="1" aria-label="Sumar variante">+</button>
@@ -737,9 +739,9 @@ $(function() {
     }
 
     if (Array.isArray(hijosItems) && hijosItems.length > 0) {
-      return hijosItems.map(it => ({ key: `i_${it.id}`, label: String(it.nombre || '').trim() })).filter(x => x.label);
+      return hijosItems.map(it => ({ key: `i_${it.id}`, label: String(it.nombre || '').trim(), costo_extra: Number(it.costo_extra || 0) })).filter(x => x.label);
     }
-    return (hijosProductos || []).map(pr => ({ key: `p_${pr.id}`, label: String(pr.nombre || '').trim() })).filter(x => x.label);
+    return (hijosProductos || []).map(pr => ({ key: `p_${pr.id}`, label: String(pr.nombre || '').trim(), costo_extra: 0 })).filter(x => x.label);
   }
 
   // Intenta descomponer una nota con formato "Hijo1 / Hijo2 / Obs. texto".
@@ -857,11 +859,11 @@ $(function() {
             }).filter(Boolean);
             const parts = [...nombresSel];
             if (obs) parts.push(`Obs. ${obs}`);
-            return { cantidad, nota: parts.join(' / ') };
+            return { cantidad, nota: parts.join(' / '), variantes };
           }
 
           const nota = String(document.getElementById('editItemNota')?.value || '').trim();
-          return { cantidad, nota };
+          return { cantidad, nota, variantes: [] };
         }
       });
     });

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS productos (
     precio_kg DECIMAL(10,2) NOT NULL DEFAULT 0,
     precio_unidad DECIMAL(10,2) NOT NULL DEFAULT 0,
     precio_libra DECIMAL(10,2) NOT NULL DEFAULT 0,
+    activo TINYINT(1) NOT NULL DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -28,7 +29,8 @@ CREATE TABLE IF NOT EXISTS producto_hijos (
 );
 
 
--- Hijos como "items" de texto (NO son productos, no tienen precio)
+-- Hijos como "items" de texto (NO son productos).
+-- costo_extra se suma automáticamente al precio base al montar el pedido.
 -- Se usa para configurar componentes/opciones internas del producto padre.
 -- Ejemplo: Producto padre "CORRIENTE" -> items: "Goulash de cerdo", "Crema"
 -- Relacionado con:
@@ -39,6 +41,7 @@ CREATE TABLE IF NOT EXISTS producto_hijos_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     producto_padre_id INT NOT NULL,
     nombre VARCHAR(120) NOT NULL,
+    costo_extra DECIMAL(10,2) NOT NULL DEFAULT 0,
     orden INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_padre_nombre (producto_padre_id, nombre),
@@ -143,6 +146,53 @@ CREATE TABLE IF NOT EXISTS usuarios (
     last_login TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- ===========================
+-- CAJA / GASTOS / CORTES DIARIOS
+-- Los cortes son instantáneas: se permiten varios por fecha y no bloquean ventas.
+-- ===========================
+CREATE TABLE IF NOT EXISTS gastos (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    fecha DATE NOT NULL,
+    concepto VARCHAR(200) NOT NULL,
+    total DECIMAL(12,2) NOT NULL,
+    metodo_pago ENUM('efectivo','transferencia','tarjeta','otro') NOT NULL DEFAULT 'efectivo',
+    creado_por_id INT NULL,
+    creado_por_nombre VARCHAR(100) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_gastos_fecha (fecha)
+);
+
+CREATE TABLE IF NOT EXISTS fondos_caja (
+    fecha DATE PRIMARY KEY,
+    monto DECIMAL(12,2) NOT NULL DEFAULT 0,
+    creado_por_id INT NULL,
+    creado_por_nombre VARCHAR(100) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cortes_diarios (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    fecha DATE NOT NULL,
+    numero_facturas INT NOT NULL DEFAULT 0,
+    total_efectivo DECIMAL(12,2) NOT NULL DEFAULT 0,
+    total_transferencia DECIMAL(12,2) NOT NULL DEFAULT 0,
+    total_tarjeta DECIMAL(12,2) NOT NULL DEFAULT 0,
+    total_qr DECIMAL(12,2) NOT NULL DEFAULT 0,
+    total_ventas DECIMAL(12,2) NOT NULL DEFAULT 0,
+    total_gastos DECIMAL(12,2) NOT NULL DEFAULT 0,
+    gastos_efectivo DECIMAL(12,2) NOT NULL DEFAULT 0,
+    fondo_caja DECIMAL(12,2) NOT NULL DEFAULT 0,
+    resultado_operativo DECIMAL(12,2) NOT NULL DEFAULT 0,
+    saldo_caja_estimado DECIMAL(12,2) NOT NULL DEFAULT 0,
+    primera_venta DATETIME NULL,
+    ultima_venta DATETIME NULL,
+    creado_por_id INT NULL,
+    creado_por_nombre VARCHAR(100) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_cortes_fecha (fecha)
 );
 
 -- Seed: crear/asegurar usuario administrador por defecto
@@ -294,6 +344,12 @@ ALTER TABLE mesas
 
 ALTER TABLE productos
     ADD COLUMN IF NOT EXISTS tipo_preparacion ENUM('alimento','bebida') NOT NULL DEFAULT 'alimento' AFTER nombre;
+
+ALTER TABLE productos
+    ADD COLUMN IF NOT EXISTS activo TINYINT(1) NOT NULL DEFAULT 1 AFTER precio_libra;
+
+ALTER TABLE producto_hijos_items
+    ADD COLUMN IF NOT EXISTS costo_extra DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER nombre;
 
 ALTER TABLE usuarios
     MODIFY rol ENUM('administrador','mesero','cocinero','barman') NOT NULL DEFAULT 'mesero';

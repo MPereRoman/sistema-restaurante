@@ -204,8 +204,8 @@
                     <input type="hidden" id="hijosPadreId" value="">
 
                     <div class="alert alert-info py-2 small mb-3">
-                        Las variantes son opciones del producto base. <strong>No cambian el precio</strong> de la base.
-                        Al montar el pedido, la selección se guarda en <code>pedido_items.nota</code> para que llegue a cocina.
+                        Las variantes son opciones del producto base. El <strong>costo extra</strong> se suma automáticamente
+                        al precio del producto y la selección también llega a cocina.
                     </div>
 
                     <div class="row g-3">
@@ -217,9 +217,11 @@
                                 <div class="input-group mb-2">
                                     <span class="input-group-text"><i class="bi bi-plus-lg"></i></span>
                                     <input id="nuevoItemHijoNombre" type="text" class="form-control" placeholder="Ej: Goulash de cerdo, Crema, Ensalada...">
-                                    <button id="btnAgregarItemHijo" class="btn btn-primary" type="button">
-                                        Agregar variante
-                                    </button>
+                                </div>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">Costo extra $</span>
+                                    <input id="nuevoItemHijoCosto" type="number" class="form-control" min="0" step="0.01" value="0">
+                                    <button id="btnAgregarItemHijo" class="btn btn-primary" type="button">Agregar variante</button>
                                 </div>
                                 <div class="form-text mb-2">
                                     Puedes agregar varios separados por <strong>,</strong> (coma). Ej: <strong>Goulash, Crema</strong>

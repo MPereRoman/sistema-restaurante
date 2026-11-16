@@ -10,10 +10,16 @@ function normalizarTipoPreparacion(value, nombre = '') {
     return /cafe|café|chocolate|refresco|té|\bte\b|agua|jugo|bebida|licuado/i.test(String(nombre || '')) ? 'bebida' : 'alimento';
 }
 
+function normalizarCostoExtra(value) {
+    const costo = Number(value || 0);
+    if (!Number.isFinite(costo) || costo < 0) throw new Error('El costo extra debe ser un número mayor o igual a 0');
+    return Math.round(costo * 100) / 100;
+}
+
 // GET /productos - Mostrar página de productos
 router.get('/', async (req, res) => {
     try {
-        const [productos] = await db.query('SELECT * FROM productos ORDER BY nombre');
+        const [productos] = await db.query('SELECT * FROM productos WHERE activo = 1 ORDER BY nombre');
         res.render('productos', { productos: productos || [] });
     } catch (error) {
         console.error('Error al obtener productos:', error);
@@ -31,8 +37,8 @@ router.get('/buscar', async (req, res) => {
     try {
         const query = req.query.q || '';
         const sql = `
-            SELECT * FROM productos 
-            WHERE nombre LIKE ? OR codigo LIKE ?
+            SELECT * FROM productos
+            WHERE activo = 1 AND (nombre LIKE ? OR codigo LIKE ?)
             ORDER BY nombre
             LIMIT 10
         `;
@@ -62,7 +68,7 @@ router.get('/:padreId(\\d+)/hijos', async (req, res) => {
             SELECT pr.id, pr.codigo, pr.nombre
             FROM producto_hijos ph
             JOIN productos pr ON pr.id = ph.producto_hijo_id
-            WHERE ph.producto_padre_id = ?
+            WHERE ph.producto_padre_id = ? AND pr.activo = 1
             ORDER BY pr.nombre ASC
         `, [padreId]);
         res.json(rows || []);
@@ -144,7 +150,7 @@ router.get('/:padreId(\\d+)/hijos-items', async (req, res) => {
     const padreId = Number(req.params.padreId);
     try {
         const [rows] = await db.query(`
-            SELECT id, producto_padre_id, nombre, orden
+            SELECT id, producto_padre_id, nombre, costo_extra, orden
             FROM producto_hijos_items
             WHERE producto_padre_id = ?
             ORDER BY orden ASC, nombre ASC, id ASC
@@ -164,6 +170,9 @@ router.post('/:padreId(\\d+)/hijos-items', async (req, res) => {
     const padreId = Number(req.params.padreId);
     const nombre = String(req.body?.nombre || '').trim();
     const orden = Number(req.body?.orden || 0);
+    let costoExtra;
+    try { costoExtra = normalizarCostoExtra(req.body?.costo_extra); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
 
     if (!Number.isFinite(padreId) || padreId <= 0) return res.status(400).json({ error: 'padreId inválido' });
     if (!nombre) return res.status(400).json({ error: 'nombre requerido' });
@@ -174,8 +183,8 @@ router.post('/:padreId(\\d+)/hijos-items', async (req, res) => {
         if (!padre) return res.status(404).json({ error: 'Producto padre no encontrado' });
 
         const [result] = await db.query(
-            'INSERT IGNORE INTO producto_hijos_items (producto_padre_id, nombre, orden) VALUES (?, ?, ?)',
-            [padreId, nombre, Number.isFinite(orden) ? orden : 0]
+            'INSERT IGNORE INTO producto_hijos_items (producto_padre_id, nombre, costo_extra, orden) VALUES (?, ?, ?, ?)',
+            [padreId, nombre, costoExtra, Number.isFinite(orden) ? orden : 0]
         );
 
         // Nota: INSERT IGNORE no informa duplicado; devolvemos 201 igual (idempotente)
@@ -186,6 +195,30 @@ router.post('/:padreId(\\d+)/hijos-items', async (req, res) => {
             return res.status(500).json({ error: 'Falta migración: cree la tabla producto_hijos_items (ver database.sql)' });
         }
         res.status(500).json({ error: 'Error al agregar hijo-item al producto' });
+    }
+});
+
+// PUT /productos/:padreId/hijos-items/:itemId - Editar nombre/costo de una variante
+router.put('/:padreId(\\d+)/hijos-items/:itemId(\\d+)', async (req, res) => {
+    const padreId = Number(req.params.padreId);
+    const itemId = Number(req.params.itemId);
+    const nombre = String(req.body?.nombre || '').trim();
+    let costoExtra;
+    try { costoExtra = normalizarCostoExtra(req.body?.costo_extra); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+    if (!nombre) return res.status(400).json({ error: 'nombre requerido' });
+    if (nombre.length > 120) return res.status(400).json({ error: 'nombre demasiado largo (máx 120)' });
+    try {
+        const [result] = await db.query(
+            'UPDATE producto_hijos_items SET nombre = ?, costo_extra = ? WHERE id = ? AND producto_padre_id = ?',
+            [nombre, costoExtra, itemId, padreId]
+        );
+        if (!result.affectedRows) return res.status(404).json({ error: 'Variante no encontrada' });
+        res.json({ message: 'Variante actualizada' });
+    } catch (error) {
+        console.error('Error al actualizar variante:', error);
+        if (error?.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Ya existe una variante con ese nombre' });
+        res.status(500).json({ error: 'Error al actualizar la variante' });
     }
 });
 
@@ -234,7 +267,7 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'El código y nombre son requeridos' });
         }
 
-        const result = await db.query(
+        const [result] = await db.query(
             'INSERT INTO productos (codigo, nombre, tipo_preparacion, precio_kg, precio_unidad, precio_libra) VALUES (?, ?, ?, ?, ?, ?)',
             [codigo, nombre, normalizarTipoPreparacion(tipo_preparacion, nombre), precio_kg || 0, precio_unidad || 0, precio_libra || 0]
         );
@@ -262,7 +295,7 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: 'El código y nombre son requeridos' });
         }
 
-        const result = await db.query(
+        const [result] = await db.query(
             'UPDATE productos SET codigo = ?, nombre = ?, tipo_preparacion = ?, precio_kg = ?, precio_unidad = ?, precio_libra = ? WHERE id = ?',
             [codigo, nombre, normalizarTipoPreparacion(tipo_preparacion, nombre), precio_kg || 0, precio_unidad || 0, precio_libra || 0, req.params.id]
         );
@@ -281,19 +314,19 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// DELETE /productos/:id - Eliminar producto
+// DELETE /productos/:id - Archivar producto sin romper pedidos/facturas históricas
 router.delete('/:id', async (req, res) => {
     try {
-        const result = await db.query('DELETE FROM productos WHERE id = ?', [req.params.id]);
+        const [result] = await db.query('UPDATE productos SET activo = 0 WHERE id = ? AND activo = 1', [req.params.id]);
         
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: 'Producto no encontrado' });
         }
 
-        res.json({ message: 'Producto eliminado exitosamente' });
+        res.json({ message: 'Producto archivado exitosamente' });
     } catch (error) {
         console.error('Error al eliminar producto:', error);
-        res.status(500).json({ error: 'Error al eliminar producto' });
+        res.status(500).json({ error: 'Error al archivar producto' });
     }
 });
 
@@ -392,7 +425,7 @@ router.post('/importar', upload.single('archivo'), async (req, res) => {
             await connection.beginTransaction();
             for (const p of rows) {
                 await connection.query(
-                    'INSERT INTO productos (codigo, nombre, tipo_preparacion, precio_kg, precio_unidad, precio_libra) VALUES (?,?,?,0,?,0) ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), tipo_preparacion=VALUES(tipo_preparacion), precio_unidad=VALUES(precio_unidad)',
+                    'INSERT INTO productos (codigo, nombre, tipo_preparacion, precio_kg, precio_unidad, precio_libra, activo) VALUES (?,?,?,0,?,0,1) ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), tipo_preparacion=VALUES(tipo_preparacion), precio_unidad=VALUES(precio_unidad), activo=1',
                     [p.codigo, p.nombre, p.tipo_preparacion, p.precio_unidad]
                 );
             }

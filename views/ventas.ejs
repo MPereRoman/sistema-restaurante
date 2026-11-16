@@ -123,9 +123,10 @@
                             <input type="text" id="buscarVentas" class="form-control" placeholder="Buscar por # de factura">
                         </div>
                     </div>
-                    <div class="col-md-3 d-flex justify-content-end gap-2">
+                    <div class="col-md-3 d-flex justify-content-end gap-2 flex-wrap">
                         <button class="btn btn-primary" id="filtrarVentas"><i class="bi bi-funnel"></i> Filtrar</button>
                         <button class="btn btn-success" id="exportarVentas"><i class="bi bi-file-earmark-excel"></i> Exportar</button>
+                        <button class="btn btn-warning" id="realizarCorte"><i class="bi bi-calculator"></i> Corte de hoy</button>
                     </div>
                 </div>
             </div>
@@ -309,6 +310,33 @@
         </div>
     </div>
 
+    <div class="modal fade" id="corteModal" tabindex="-1" aria-labelledby="corteModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="corteModalLabel"><i class="bi bi-calculator me-2"></i>Corte del día en curso</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">Crea una instantánea del resumen actual. No bloquea ventas y puede repetirse cuantas veces sea necesario.</p>
+                    <dl class="row mb-0">
+                        <dt class="col-7">Facturas</dt><dd class="col-5 text-end" id="corteFacturas">0</dd>
+                        <dt class="col-7">Ventas totales</dt><dd class="col-5 text-end fw-semibold" id="corteVentas">$0</dd>
+                        <dt class="col-7">Gastos</dt><dd class="col-5 text-end text-danger" id="corteGastos">$0</dd>
+                        <dt class="col-7">Resultado operativo</dt><dd class="col-5 text-end fw-bold" id="corteResultado">$0</dd>
+                        <dt class="col-7">Fondo inicial</dt><dd class="col-5 text-end" id="corteFondo">$0</dd>
+                        <dt class="col-7">Caja estimada</dt><dd class="col-5 text-end fw-bold" id="corteCaja">$0</dd>
+                    </dl>
+                </div>
+                <div class="modal-footer">
+                    <a href="/gastos" class="btn btn-outline-secondary"><i class="bi bi-cash-coin me-1"></i>Gastos y fondo</a>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-warning" id="confirmarCorte"><i class="bi bi-check2-circle me-1"></i>Realizar corte</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <%- include('partials/footer') %>
 
     <script src="/vendor/jquery/jquery.min.js"></script>
@@ -316,6 +344,9 @@
     <script>
         const facturaModal = new bootstrap.Modal(document.getElementById('facturaModal'));
         const detallesModal = new bootstrap.Modal(document.getElementById('detallesModal'));
+        const corteModal = new bootstrap.Modal(document.getElementById('corteModal'));
+        const fechaHoyCorte = <%- JSON.stringify(typeof horas_fecha !== 'undefined' ? horas_fecha : '') %>;
+        const formatoDinero = valor => `$${Number(valor || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         
         // Función para mostrar alertas personalizadas
         function mostrarAlerta(mensaje, tipo = 'success') {
@@ -429,6 +460,50 @@
             if (desde && hasta) { params.set('desde', desde); params.set('hasta', hasta); }
             if (q) params.set('q', q);
             window.open(`/ventas/export?${params.toString()}`, '_blank');
+        });
+
+        async function cargarResumenCorte() {
+            const response = await fetch(`/api/gastos/resumen?fecha=${encodeURIComponent(fechaHoyCorte)}`, { headers: { Accept: 'application/json' } });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'No se pudo cargar el resumen de hoy');
+            document.getElementById('corteFacturas').textContent = Number(data.numero_facturas || 0).toLocaleString('es-MX');
+            document.getElementById('corteVentas').textContent = formatoDinero(data.total_ventas);
+            document.getElementById('corteGastos').textContent = formatoDinero(data.total_gastos);
+            document.getElementById('corteResultado').textContent = formatoDinero(data.resultado_operativo);
+            document.getElementById('corteFondo').textContent = formatoDinero(data.fondo_caja);
+            document.getElementById('corteCaja').textContent = formatoDinero(data.saldo_caja_estimado);
+            document.getElementById('corteResultado').classList.toggle('text-danger', Number(data.resultado_operativo) < 0);
+            document.getElementById('corteCaja').classList.toggle('text-danger', Number(data.saldo_caja_estimado) < 0);
+            return data;
+        }
+
+        document.getElementById('realizarCorte').addEventListener('click', async function() {
+            try {
+                await cargarResumenCorte();
+                corteModal.show();
+            } catch (error) {
+                mostrarAlerta(error.message, 'error');
+            }
+        });
+
+        document.getElementById('confirmarCorte').addEventListener('click', async function() {
+            const button = this;
+            button.disabled = true;
+            try {
+                const response = await fetch('/api/cortes-diarios', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    body: JSON.stringify({ fecha: fechaHoyCorte })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'No se pudo realizar el corte');
+                corteModal.hide();
+                mostrarAlerta(`Corte #${data.corte.id} realizado. Resultado: ${formatoDinero(data.corte.resultado_operativo)}`);
+            } catch (error) {
+                mostrarAlerta(error.message, 'error');
+            } finally {
+                button.disabled = false;
+            }
         });
 
         // Establecer valores iniciales desde la URL o defaults

@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ===== Hijos como "items" de texto (nuevo) =====
     // Relacionado con: views/productos.ejs (#nuevoItemHijoNombre, #btnAgregarItemHijo, #listaItemsHijosConfigurados)
     // y routes/productos.js (/:padreId/hijos-items)
-    let hijosItemsActuales = []; // [{id, producto_padre_id, nombre, orden}]
+    let hijosItemsActuales = []; // [{id, producto_padre_id, nombre, costo_extra, orden}]
 
     function escapeHtml(s) {
         return String(s ?? '')
@@ -98,23 +98,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
         hijosItemsActuales.forEach(it => {
             const item = document.createElement('div');
-            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.className = 'list-group-item';
             item.innerHTML = `
-              <div class="fw-semibold">${escapeHtml(it.nombre || '')}</div>
-              <button type="button" class="btn btn-sm btn-outline-danger" data-item-hijo-id="${escapeHtml(it.id)}" title="Quitar variante">
-                <i class="bi bi-x-lg"></i>
-              </button>
+              <div class="row g-2 align-items-center">
+                <div class="col-12 col-md-5"><input class="form-control form-control-sm" data-variante-nombre value="${escapeHtml(it.nombre || '')}" maxlength="120"></div>
+                <div class="col-8 col-md-4"><div class="input-group input-group-sm"><span class="input-group-text">+$</span><input type="number" class="form-control" data-variante-costo min="0" step="0.01" value="${Number(it.costo_extra || 0).toFixed(2)}"></div></div>
+                <div class="col-4 col-md-3 text-end">
+                  <button type="button" class="btn btn-sm btn-outline-primary" data-save-item-hijo="${escapeHtml(it.id)}" title="Guardar cambios"><i class="bi bi-check-lg"></i></button>
+                  <button type="button" class="btn btn-sm btn-outline-danger" data-delete-item-hijo="${escapeHtml(it.id)}" title="Quitar variante"><i class="bi bi-x-lg"></i></button>
+                </div>
+              </div>
             `;
             lista.appendChild(item);
         });
     }
 
-    async function agregarItemHijo(nombre) {
+    async function agregarItemHijo(nombre, costoExtra = 0) {
         try {
             const resp = await fetch(`/api/productos/${encodeURIComponent(hijosPadreId)}/hijos-items`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre: String(nombre || '').trim() })
+                body: JSON.stringify({ nombre: String(nombre || '').trim(), costo_extra: Number(costoExtra || 0) })
             });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.error || 'Error al agregar variante');
@@ -122,6 +126,17 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (err) {
             alert(err.message || 'No se pudo agregar la variante');
         }
+    }
+
+    async function actualizarItemHijo(itemId, nombre, costoExtra) {
+        const resp = await fetch(`/api/productos/${encodeURIComponent(hijosPadreId)}/hijos-items/${encodeURIComponent(itemId)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ nombre: String(nombre || '').trim(), costo_extra: Number(costoExtra || 0) })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'No se pudo actualizar la variante');
+        await cargarItemsHijosDelPadre();
     }
 
     async function quitarItemHijo(itemId) {
@@ -140,12 +155,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Delegación: quitar item hijo desde lista
     document.getElementById('listaItemsHijosConfigurados')?.addEventListener('click', function (e) {
-        const btn = e.target.closest('button[data-item-hijo-id]');
-        if (!btn) return;
-        const itemId = btn.getAttribute('data-item-hijo-id');
-        if (!itemId) return;
-        if (confirm('¿Quitar esta variante del producto base?')) {
-            quitarItemHijo(itemId);
+        const deleteBtn = e.target.closest('button[data-delete-item-hijo]');
+        if (deleteBtn) {
+            const itemId = deleteBtn.getAttribute('data-delete-item-hijo');
+            if (itemId && confirm('¿Quitar esta variante del producto base?')) quitarItemHijo(itemId);
+            return;
+        }
+        const saveBtn = e.target.closest('button[data-save-item-hijo]');
+        if (saveBtn) {
+            const row = saveBtn.closest('.list-group-item');
+            actualizarItemHijo(
+                saveBtn.getAttribute('data-save-item-hijo'),
+                row?.querySelector('[data-variante-nombre]')?.value,
+                row?.querySelector('[data-variante-costo]')?.value
+            ).catch(err => alert(err.message || 'No se pudo actualizar la variante'));
         }
     });
 
@@ -155,14 +178,18 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!input) return;
         const raw = String(input.value || '').trim();
         if (!raw) return alert('Escribe el nombre de la variante.');
+        const costoExtra = Number(document.getElementById('nuevoItemHijoCosto')?.value || 0);
+        if (!Number.isFinite(costoExtra) || costoExtra < 0) return alert('El costo extra debe ser mayor o igual a 0.');
 
         // Permitir agregar varios separados por coma
         const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
         for (const nombre of parts) {
-            await agregarItemHijo(nombre);
+            await agregarItemHijo(nombre, costoExtra);
         }
 
         input.value = '';
+        const costoInput = document.getElementById('nuevoItemHijoCosto');
+        if (costoInput) costoInput.value = '0';
         input.focus();
     });
 
@@ -423,6 +450,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (inputBuscarHijo) inputBuscarHijo.value = '';
         const inputItem = document.getElementById('nuevoItemHijoNombre');
         if (inputItem) inputItem.value = '';
+        const inputCostoItem = document.getElementById('nuevoItemHijoCosto');
+        if (inputCostoItem) inputCostoItem.value = '0';
 
         modalHijos.show();
         // Cargar primero el modo nuevo (items de texto)
@@ -589,16 +618,17 @@ function editarProducto(id) {
 
 // Función para eliminar producto
 function eliminarProducto(id) {
-    if (!confirm('¿Está seguro de eliminar este producto?')) {
+    if (!confirm('¿Archivar este producto? Dejará de aparecer en el catálogo, pero se conservará en facturas y pedidos anteriores.')) {
         return;
     }
 
     fetch(`/productos/${id}`, {
         method: 'DELETE'
     })
-        .then(response => {
+        .then(async response => {
             if (!response.ok) {
-                throw new Error('Error al eliminar el producto');
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || 'Error al archivar el producto');
             }
             location.reload();
         })

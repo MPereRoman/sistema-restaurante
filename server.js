@@ -96,6 +96,8 @@ const configuracionRoutes = require('./routes/configuracion');
 const ventasRoutes = require('./routes/ventas');
 const authRoutes = require('./routes/auth');
 const usuariosRoutes = require('./routes/usuarios');
+const cajaRoutes = require('./routes/caja');
+const { startRetentionScheduler } = require('./services/retention');
 
 // Auth routes (públicas): /login /logout /setup
 app.use(authRoutes);
@@ -140,6 +142,8 @@ app.use('/api/cocina', requireRole(['cocinero', 'barman', 'mesero', 'administrad
 // Configuración y ventas (admin)
 app.use('/configuracion', requireRole('administrador'), configuracionRoutes);
 app.use('/ventas', requireRole('administrador'), ventasRoutes);
+app.use(['/gastos', '/api/gastos', '/api/cortes-diarios'], requireRole('administrador'));
+app.use(cajaRoutes);
 
 // Ruta para la página de productos
 app.get('/productos', async (req, res) => {
@@ -199,6 +203,8 @@ async function startServer() {
         const connection = await db.getConnection();
         connection.release();
         console.log('Conexión exitosa a la base de datos');
+        if (typeof db.ensureSchema === 'function') await db.ensureSchema();
+        startRetentionScheduler();
 
         // Iniciar el servidor solo si la conexión a la base de datos es exitosa.
         // Si el puerto está ocupado, probamos automáticamente el siguiente disponible.

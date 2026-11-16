@@ -63,6 +63,12 @@ async function ensureSchema() {
         await pool.query(
             `ALTER TABLE productos ADD COLUMN IF NOT EXISTS tipo_preparacion ENUM('alimento','bebida') NOT NULL DEFAULT 'alimento' AFTER nombre`
         );
+        await pool.query(
+            `ALTER TABLE productos ADD COLUMN IF NOT EXISTS activo TINYINT(1) NOT NULL DEFAULT 1 AFTER precio_libra`
+        );
+        await pool.query(
+            `ALTER TABLE producto_hijos_items ADD COLUMN IF NOT EXISTS costo_extra DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER nombre`
+        );
         if (categoriaNueva) {
             await pool.query(
                 `UPDATE productos SET tipo_preparacion = 'bebida'
@@ -144,22 +150,58 @@ async function ensureSchema() {
                  MODIFY metodo ENUM('efectivo','transferencia','tarjeta','qr') NOT NULL`
             );
         }
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS gastos (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                fecha DATE NOT NULL,
+                concepto VARCHAR(200) NOT NULL,
+                total DECIMAL(12,2) NOT NULL,
+                metodo_pago ENUM('efectivo','transferencia','tarjeta','otro') NOT NULL DEFAULT 'efectivo',
+                creado_por_id INT NULL,
+                creado_por_nombre VARCHAR(100) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_gastos_fecha (fecha)
+            )
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS fondos_caja (
+                fecha DATE PRIMARY KEY,
+                monto DECIMAL(12,2) NOT NULL DEFAULT 0,
+                creado_por_id INT NULL,
+                creado_por_nombre VARCHAR(100) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS cortes_diarios (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                fecha DATE NOT NULL,
+                numero_facturas INT NOT NULL DEFAULT 0,
+                total_efectivo DECIMAL(12,2) NOT NULL DEFAULT 0,
+                total_transferencia DECIMAL(12,2) NOT NULL DEFAULT 0,
+                total_tarjeta DECIMAL(12,2) NOT NULL DEFAULT 0,
+                total_qr DECIMAL(12,2) NOT NULL DEFAULT 0,
+                total_ventas DECIMAL(12,2) NOT NULL DEFAULT 0,
+                total_gastos DECIMAL(12,2) NOT NULL DEFAULT 0,
+                gastos_efectivo DECIMAL(12,2) NOT NULL DEFAULT 0,
+                fondo_caja DECIMAL(12,2) NOT NULL DEFAULT 0,
+                resultado_operativo DECIMAL(12,2) NOT NULL DEFAULT 0,
+                saldo_caja_estimado DECIMAL(12,2) NOT NULL DEFAULT 0,
+                primera_venta DATETIME NULL,
+                ultima_venta DATETIME NULL,
+                creado_por_id INT NULL,
+                creado_por_nombre VARCHAR(100) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_cortes_fecha (fecha)
+            )
+        `);
     } catch (err) {
         // No bloqueamos el arranque si falla el "auto-migrate", pero lo dejamos en consola.
         console.error('ensureSchema() falló:', err);
     }
 }
 
-// Verificar la conexión
-pool.getConnection()
-    .then(connection => {
-        console.log('Conexión exitosa a la base de datos');
-        connection.release();
-        // Intentar asegurar esquema al iniciar (mejora compatibilidad al actualizar el sistema)
-        ensureSchema();
-    })
-    .catch(err => {
-        console.error('Error al conectar a la base de datos:', err);
-    });
-
 module.exports = pool; 
+module.exports.ensureSchema = ensureSchema;
