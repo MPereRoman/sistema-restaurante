@@ -24,6 +24,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # BuildKit no resolvía DNS desde su red aislada en la Raspberry.
+      # Sólo la compilación usa la red del host; el contenedor sigue aislado.
+      network: host
     restart: unless-stopped
     environment:
       NODE_ENV: production
