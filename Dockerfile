@@ -3,8 +3,8 @@ FROM node:24-bookworm-slim
 ENV NODE_ENV=production
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends cups-client imagemagick librsvg2-bin fonts-dejavu-core \
+RUN apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update \
+    && apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true install -y --no-install-recommends cups-client imagemagick librsvg2-bin fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
