@@ -98,6 +98,7 @@ const authRoutes = require('./routes/auth');
 const usuariosRoutes = require('./routes/usuarios');
 const cajaRoutes = require('./routes/caja');
 const { startRetentionScheduler } = require('./services/retention');
+const { startAutomaticCloseScheduler } = require('./services/auto-close');
 
 // Auth routes (públicas): /login /logout /setup
 app.use(authRoutes);
@@ -205,6 +206,7 @@ async function startServer() {
         console.log('Conexión exitosa a la base de datos');
         if (typeof db.ensureSchema === 'function') await db.ensureSchema();
         startRetentionScheduler();
+        startAutomaticCloseScheduler();
 
         // Iniciar el servidor solo si la conexión a la base de datos es exitosa.
         // Si el puerto está ocupado, probamos automáticamente el siguiente disponible.

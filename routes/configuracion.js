@@ -57,6 +57,7 @@ router.get('/', async (req, res) => {
                     nit: '',
                     pie_pagina: '',
                     datos_transferencia: '',
+                    beneficiario_transferencia: '',
                     ancho_papel: 80,
                     font_size: 1,
                     cocina_auto_listo_comanda: 0,
@@ -110,6 +111,7 @@ router.post('/', upload.fields([
             nit,
             pie_pagina,
             datos_transferencia,
+            beneficiario_transferencia,
             ancho_papel,
             font_size,
             cocina_auto_listo_comanda,
@@ -132,6 +134,7 @@ router.post('/', upload.fields([
             nit || null,
             pie_pagina || null,
             String(datos_transferencia || '').trim() || null,
+            String(beneficiario_transferencia || '').trim() || null,
             ancho_papel || 80,
             font_size || 1,
             Number(String(cocina_auto_listo_comanda || '0')) ? 1 : 0,
@@ -154,7 +157,7 @@ router.post('/', upload.fields([
             // Insertar nueva configuración
             let sql = `
                 INSERT INTO configuracion_impresion 
-                (nombre_negocio, direccion, telefono, nit, pie_pagina, datos_transferencia,
+                (nombre_negocio, direccion, telefono, nit, pie_pagina, datos_transferencia, beneficiario_transferencia,
                  ancho_papel, font_size, cocina_auto_listo_comanda, barra_auto_listo_comanda, cocina_imprime_servidor,
                  impresora_comandas, impresora_comandas_barra, impresora_facturas, factura_imprime_servidor, factura_copias, factura_auto_print
             `;
@@ -167,7 +170,7 @@ router.post('/', upload.fields([
             let sql = `
                 UPDATE configuracion_impresion 
                 SET nombre_negocio = ?, direccion = ?, telefono = ?, nit = ?,
-                    pie_pagina = ?, datos_transferencia = ?, ancho_papel = ?, font_size = ?, cocina_auto_listo_comanda = ?, barra_auto_listo_comanda = ?, cocina_imprime_servidor = ?,
+                    pie_pagina = ?, datos_transferencia = ?, beneficiario_transferencia = ?, ancho_papel = ?, font_size = ?, cocina_auto_listo_comanda = ?, barra_auto_listo_comanda = ?, cocina_imprime_servidor = ?,
                     impresora_comandas = ?, impresora_comandas_barra = ?, impresora_facturas = ?, factura_imprime_servidor = ?, factura_copias = ?, factura_auto_print = ?
             `;
             if (req.files?.logo) sql += ', logo_data = ?, logo_tipo = ?';

@@ -286,6 +286,12 @@
                             <div class="form-text">
                                 Aparecerá bajo la leyenda “Datos para transferencia”. Se conserva como texto para respetar ceros iniciales.
                             </div>
+                            <label for="beneficiarioTransferencia" class="form-label fw-semibold mt-3">Nombre del beneficiario</label>
+                            <input id="beneficiarioTransferencia" type="text" class="form-control"
+                                   name="beneficiario_transferencia" maxlength="150"
+                                   value="<%= config.beneficiario_transferencia || '' %>"
+                                   placeholder="Ej: María López Hernández">
+                            <div class="form-text">Se mostrará en el ticket cuando el pago incluya transferencia.</div>
                         </div>
                     </div>
 
@@ -564,6 +570,7 @@
                     <input type="hidden" name="telefono"       value="<%= config.telefono || '' %>">
                     <input type="hidden" name="pie_pagina"     value="<%= config.pie_pagina || '' %>">
                     <input type="hidden" name="datos_transferencia" value="<%= config.datos_transferencia || '' %>">
+                    <input type="hidden" name="beneficiario_transferencia" value="<%= config.beneficiario_transferencia || '' %>">
 
                     <div class="save-bar d-flex align-items-center gap-2">
                         <button type="submit" class="btn btn-primary">

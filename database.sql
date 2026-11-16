@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS configuracion_impresion (
     nit VARCHAR(50),
     pie_pagina TEXT,
     datos_transferencia VARCHAR(255),
+    beneficiario_transferencia VARCHAR(150),
     ancho_papel INT DEFAULT 80,
     font_size INT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -195,6 +196,18 @@ CREATE TABLE IF NOT EXISTS cortes_diarios (
     INDEX idx_cortes_fecha (fecha)
 );
 
+-- Histórico permanente: un único renglón por semana con ventas - gastos.
+-- El detalle operativo se depura; estos totales se conservan por año.
+CREATE TABLE IF NOT EXISTS resumenes_semanales (
+    semana_inicio DATE PRIMARY KEY,
+    semana_fin DATE NOT NULL,
+    anio SMALLINT NOT NULL,
+    numero_semana TINYINT NOT NULL,
+    neto DECIMAL(14,2) NOT NULL DEFAULT 0,
+    archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_resumenes_anio (anio, semana_inicio)
+);
+
 -- Seed: crear/asegurar usuario administrador por defecto
 -- Usuario: admin
 -- Contraseña: admin123
@@ -237,6 +250,8 @@ CREATE TABLE IF NOT EXISTS pedidos (
     notas TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    cierre_automatico TINYINT(1) NOT NULL DEFAULT 0,
+    cerrado_at DATETIME NULL,
     FOREIGN KEY (mesa_id) REFERENCES mesas(id),
     FOREIGN KEY (cliente_id) REFERENCES clientes(id)
 );
@@ -323,6 +338,9 @@ ALTER TABLE configuracion_impresion
 ALTER TABLE configuracion_impresion
     ADD COLUMN IF NOT EXISTS datos_transferencia VARCHAR(255) NULL AFTER pie_pagina;
 
+ALTER TABLE configuracion_impresion
+    ADD COLUMN IF NOT EXISTS beneficiario_transferencia VARCHAR(150) NULL AFTER datos_transferencia;
+
 -- 3) Agregar estado "rechazado" a pedidos y pedido_items (si ya existían)
 -- Nota: Esto permite marcar pedidos cancelados como rechazados y visualizarlos en Cocina.
 -- Relacionado con:
@@ -338,6 +356,12 @@ ALTER TABLE pedidos
 
 ALTER TABLE pedidos
     ADD COLUMN IF NOT EXISTS pagos_borrador LONGTEXT NULL AFTER numero_personas;
+
+ALTER TABLE pedidos
+    ADD COLUMN IF NOT EXISTS cierre_automatico TINYINT(1) NOT NULL DEFAULT 0 AFTER pagos_borrador;
+
+ALTER TABLE pedidos
+    ADD COLUMN IF NOT EXISTS cerrado_at DATETIME NULL AFTER cierre_automatico;
 
 ALTER TABLE mesas
     ADD COLUMN IF NOT EXISTS activa TINYINT(1) NOT NULL DEFAULT 1 AFTER estado;

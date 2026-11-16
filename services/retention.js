@@ -20,6 +20,80 @@ function getRetentionCutoff(referenceDate = new Date()) {
     return formatLocalDate(date);
 }
 
+function getWeekArchiveMetadata(weekStart) {
+    const [year, month, day] = String(weekStart).split('-').map(Number);
+    const start = new Date(year, month - 1, day, 12);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+
+    // ISO-8601: la semana y el año corresponden al jueves de esa semana.
+    const thursday = new Date(start);
+    thursday.setDate(thursday.getDate() + 3);
+    const isoYear = thursday.getFullYear();
+    const firstThursday = new Date(isoYear, 0, 4, 12);
+    const firstMonday = new Date(firstThursday);
+    firstMonday.setDate(firstMonday.getDate() - ((firstMonday.getDay() + 6) % 7));
+    const weekNumber = Math.floor((start - firstMonday) / (7 * 24 * 60 * 60 * 1000)) + 1;
+
+    return {
+        semana_inicio: formatLocalDate(start),
+        semana_fin: formatLocalDate(end),
+        anio: isoYear,
+        numero_semana: weekNumber
+    };
+}
+
+async function archiveExpiredWeeklySummaries(connection, cutoff) {
+    const [salesRows] = await connection.query(`
+        SELECT DATE_FORMAT(DATE_SUB(DATE(fecha), INTERVAL WEEKDAY(fecha) DAY), '%Y-%m-%d') AS semana_inicio,
+               COALESCE(SUM(total), 0) AS total_ventas
+        FROM facturas
+        WHERE estado = 'pagada' AND fecha < ?
+        GROUP BY DATE_SUB(DATE(fecha), INTERVAL WEEKDAY(fecha) DAY)
+    `, [cutoff]);
+    const [expenseRows] = await connection.query(`
+        SELECT DATE_FORMAT(DATE_SUB(fecha, INTERVAL WEEKDAY(fecha) DAY), '%Y-%m-%d') AS semana_inicio,
+               COALESCE(SUM(total), 0) AS total_gastos
+        FROM gastos
+        WHERE fecha < ?
+        GROUP BY DATE_SUB(fecha, INTERVAL WEEKDAY(fecha) DAY)
+    `, [cutoff]);
+
+    const summaries = new Map();
+    for (const row of salesRows) {
+        summaries.set(row.semana_inicio, {
+            total_ventas: Number(row.total_ventas || 0),
+            total_gastos: 0
+        });
+    }
+    for (const row of expenseRows) {
+        const current = summaries.get(row.semana_inicio) || { total_ventas: 0, total_gastos: 0 };
+        current.total_gastos = Number(row.total_gastos || 0);
+        summaries.set(row.semana_inicio, current);
+    }
+
+    for (const [weekStart, summary] of summaries) {
+        const week = getWeekArchiveMetadata(weekStart);
+        const net = Math.round((summary.total_ventas - summary.total_gastos) * 100) / 100;
+        await connection.query(`
+            INSERT INTO resumenes_semanales
+                (semana_inicio, semana_fin, anio, numero_semana, neto)
+            VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                neto = neto + VALUES(neto),
+                archived_at = CURRENT_TIMESTAMP
+        `, [
+            week.semana_inicio,
+            week.semana_fin,
+            week.anio,
+            week.numero_semana,
+            net
+        ]);
+    }
+
+    return { weeks: summaries.size };
+}
+
 async function purgeExpiredOperationalData(referenceDate = new Date()) {
     const db = require('../db');
     const cutoff = getRetentionCutoff(referenceDate);
@@ -27,6 +101,10 @@ async function purgeExpiredOperationalData(referenceDate = new Date()) {
     const deleted = {};
     try {
         await connection.beginTransaction();
+
+        // El resumen se escribe en la misma transacción que la depuración: si
+        // cualquier borrado falla, tampoco queda un histórico duplicado.
+        const archived = await archiveExpiredWeeklySummaries(connection, cutoff);
 
         const runDelete = async (key, sql, params = [cutoff]) => {
             const [result] = await connection.query(sql, params);
@@ -61,8 +139,8 @@ async function purgeExpiredOperationalData(referenceDate = new Date()) {
         await runDelete('cortes_diarios', 'DELETE FROM cortes_diarios WHERE fecha < ?');
 
         await connection.commit();
-        console.log('Retención semanal aplicada', { cutoff, deleted });
-        return { cutoff, deleted };
+        console.log('Retención semanal aplicada', { cutoff, archived, deleted });
+        return { cutoff, archived, deleted };
     } catch (error) {
         await connection.rollback();
         console.error('No se pudo aplicar la retención semanal:', error);
@@ -80,4 +158,10 @@ function startRetentionScheduler() {
     return timer;
 }
 
-module.exports = { getRetentionCutoff, purgeExpiredOperationalData, startRetentionScheduler };
+module.exports = {
+    getRetentionCutoff,
+    getWeekArchiveMetadata,
+    archiveExpiredWeeklySummaries,
+    purgeExpiredOperationalData,
+    startRetentionScheduler
+};

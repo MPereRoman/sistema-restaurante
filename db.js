@@ -28,6 +28,8 @@ async function ensureSchema() {
         await pool.query(`ALTER TABLE mesas ADD COLUMN IF NOT EXISTS activa TINYINT(1) NOT NULL DEFAULT 1 AFTER estado`);
         await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS numero_personas INT NOT NULL DEFAULT 1 AFTER mesero_nombre`);
         await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pagos_borrador LONGTEXT NULL AFTER numero_personas`);
+        await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cierre_automatico TINYINT(1) NOT NULL DEFAULT 0 AFTER pagos_borrador`);
+        await pool.query(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cerrado_at DATETIME NULL AFTER cierre_automatico`);
         await pool.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pedido_id INT NULL AFTER cliente_id`);
         await pool.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS estado ENUM('borrador','pagada') NOT NULL DEFAULT 'pagada' AFTER forma_pago`);
 
@@ -102,6 +104,10 @@ async function ensureSchema() {
         await pool.query(
             `ALTER TABLE configuracion_impresion
              ADD COLUMN IF NOT EXISTS datos_transferencia VARCHAR(255) NULL AFTER pie_pagina`
+        );
+        await pool.query(
+            `ALTER TABLE configuracion_impresion
+             ADD COLUMN IF NOT EXISTS beneficiario_transferencia VARCHAR(150) NULL AFTER datos_transferencia`
         );
 
         // Tabla de pagos por factura (pago mixto) — con soporte para QR
@@ -195,6 +201,17 @@ async function ensureSchema() {
                 creado_por_nombre VARCHAR(100) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_cortes_fecha (fecha)
+            )
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS resumenes_semanales (
+                semana_inicio DATE PRIMARY KEY,
+                semana_fin DATE NOT NULL,
+                anio SMALLINT NOT NULL,
+                numero_semana TINYINT NOT NULL,
+                neto DECIMAL(14,2) NOT NULL DEFAULT 0,
+                archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_resumenes_anio (anio, semana_inicio)
             )
         `);
     } catch (err) {

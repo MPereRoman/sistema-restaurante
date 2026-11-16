@@ -1512,7 +1512,7 @@ router.post('/pedidos/:pedidoId/pagado', async (req, res) => {
             facturaId = facturaInsert.insertId;
         }
         await reemplazarContenidoFactura(connection, facturaId, items, pagos);
-        await connection.query(`UPDATE pedidos SET estado = 'cerrado', total = ?, pagos_borrador = NULL WHERE id = ?`, [total, pedidoId]);
+        await connection.query(`UPDATE pedidos SET estado = 'cerrado', total = ?, pagos_borrador = NULL, cierre_automatico = 0, cerrado_at = NOW() WHERE id = ?`, [total, pedidoId]);
         await connection.query(`UPDATE mesas SET estado = 'libre' WHERE id = ?`, [pedido.mesa_id]);
         await connection.commit();
 
@@ -1640,7 +1640,7 @@ router.post('/pedidos/:pedidoId/facturar-legacy', async (req, res) => {
                 // Si la tabla no existe, no rompemos la facturación
             }
 
-            await connection.query(`UPDATE pedidos SET estado = 'cerrado', total = ? WHERE id = ?`, [total, pedidoId]);
+            await connection.query(`UPDATE pedidos SET estado = 'cerrado', total = ?, cierre_automatico = 0, cerrado_at = NOW() WHERE id = ?`, [total, pedidoId]);
             await connection.query(`UPDATE mesas SET estado = 'libre' WHERE id = ?`, [pedido.mesa_id]);
 
             await connection.commit();

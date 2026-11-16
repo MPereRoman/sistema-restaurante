@@ -104,6 +104,29 @@
                 </div>
             </div>
         </div>
+
+        <div class="card shadow-sm border-0 mt-4">
+            <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <div class="fw-semibold"><i class="bi bi-archive me-2"></i>Histórico semanal</div>
+                    <div class="small text-muted">Totales permanentes de semanas ya depuradas. El neto es ventas menos gastos.</div>
+                </div>
+                <div class="input-group input-group-sm" style="max-width:170px">
+                    <span class="input-group-text">Año</span>
+                    <input id="historicoAnio" type="number" class="form-control" min="2000" max="2200" value="<%= new Date(fechaHoy + 'T12:00:00').getFullYear() %>">
+                </div>
+            </div>
+            <div class="card-body border-bottom">
+                <div class="metric-label">Neto anual archivado</div><div id="hNeto" class="fw-bold fs-5">$0.00</div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light"><tr><th>Semana</th><th>Periodo</th><th class="text-end">Neto</th></tr></thead>
+                    <tbody id="historicoTabla"></tbody>
+                </table>
+            </div>
+            <div id="sinHistorico" class="text-center text-muted p-4">Todavía no hay semanas archivadas para este año.</div>
+        </div>
     </main>
     <%- include('partials/footer') %>
     <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>

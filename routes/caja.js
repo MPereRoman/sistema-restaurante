@@ -31,6 +31,26 @@ router.get('/api/gastos/resumen', async (req, res) => {
     }
 });
 
+router.get('/api/gastos/historico', async (req, res) => {
+    try {
+        const anio = Number(req.query.anio || new Date().getFullYear());
+        if (!Number.isInteger(anio) || anio < 2000 || anio > 2200) {
+            return res.status(400).json({ error: 'Año inválido' });
+        }
+        const [semanas] = await db.query(`
+            SELECT semana_inicio, semana_fin, anio, numero_semana, neto
+            FROM resumenes_semanales
+            WHERE anio = ?
+            ORDER BY semana_inicio DESC
+        `, [anio]);
+        const neto_anual = semanas.reduce((sum, semana) => sum + Number(semana.neto || 0), 0);
+        res.json({ anio, semanas, neto_anual });
+    } catch (error) {
+        console.error('Error al consultar histórico semanal:', error);
+        res.status(500).json({ error: 'No se pudo consultar el histórico semanal' });
+    }
+});
+
 router.post('/api/gastos', async (req, res) => {
     try {
         const fecha = validateDate(req.body?.fecha || formatLocalDate());

@@ -54,7 +54,29 @@ document.addEventListener('DOMContentLoaded', () => {
         render(data);
     }
 
+    function formatDateOnly(value) {
+        const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+        return date.toLocaleDateString('es-MX', { day:'2-digit', month:'short' });
+    }
+
+    async function loadHistory() {
+        const anio = Number($('historicoAnio').value);
+        const response = await fetch(`/api/gastos/historico?anio=${encodeURIComponent(anio)}`, { headers:{Accept:'application/json'} });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'No se pudo cargar el histórico');
+        const weeks = Array.isArray(data.semanas) ? data.semanas : [];
+        setSignedValue($('hNeto'), data.neto_anual);
+        $('sinHistorico').classList.toggle('d-none', weeks.length > 0);
+        $('historicoTabla').innerHTML = weeks.map(week => `
+            <tr>
+                <td class="fw-semibold">${escapeHtml(week.numero_semana)}</td>
+                <td>${formatDateOnly(week.semana_inicio)} – ${formatDateOnly(week.semana_fin)}</td>
+                <td class="text-end fw-semibold ${Number(week.neto) < 0 ? 'text-danger' : 'text-success'}">${money(week.neto)}</td>
+            </tr>`).join('');
+    }
+
     $('fechaCaja').addEventListener('change', () => loadSummary().catch(error => showAlert(error.message, 'danger')));
+    $('historicoAnio').addEventListener('change', () => loadHistory().catch(error => showAlert(error.message, 'danger')));
 
     $('guardarFondo').addEventListener('click', async () => {
         try {
@@ -102,5 +124,5 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) { showAlert(error.message, 'danger'); }
     });
 
-    loadSummary().catch(error => showAlert(error.message, 'danger'));
+    Promise.all([loadSummary(), loadHistory()]).catch(error => showAlert(error.message, 'danger'));
 });

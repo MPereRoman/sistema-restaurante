@@ -106,6 +106,7 @@ function buildTicketSvg({ factura, detalles, pagos, negocio, mesaNumero, paperWi
     const incluyeTransferencia = String(factura?.forma_pago || '').toLowerCase() === 'transferencia' ||
         (pagos || []).some(p => String(p?.metodo || '').toLowerCase() === 'transferencia');
     const datosTransferencia = String(negocio?.datos_transferencia || '').trim();
+    const beneficiarioTransferencia = String(negocio?.beneficiario_transferencia || '').trim();
 
     layout.addImage(logo, Math.min(420, width - 36), 200);
     layout.addText(negocio?.nombre_negocio || 'BISTRO CIENTO44', { align: 'center', bold: true, size: baseFont + 5 });
@@ -113,7 +114,6 @@ function buildTicketSvg({ factura, detalles, pagos, negocio, mesaNumero, paperWi
     if (negocio?.telefono) layout.addText(`Tel: ${negocio.telefono}`, { align: 'center', size: baseFont - 3 });
     if (negocio?.nit) layout.addText(`R.F.C.: ${negocio.nit}`, { align: 'center', size: baseFont - 3 });
     layout.addDivider();
-    layout.addText(`Factura #: ${factura?.id ?? '-'}`, { bold: true });
     if (mesaNumero) layout.addText(`Mesa: ${mesaNumero}`, { bold: true });
     layout.addText(`Fecha: ${formatDateTime(factura?.fecha)}`, { size: baseFont - 3 });
     layout.addDivider();
@@ -147,9 +147,10 @@ function buildTicketSvg({ factura, detalles, pagos, negocio, mesaNumero, paperWi
     } else if (factura?.forma_pago) {
         layout.addText(`Forma de pago: ${capitalize(factura.forma_pago)}`, { align: 'left', size: baseFont - 2 });
     }
-    if (datosTransferencia && incluyeTransferencia) {
+    if ((datosTransferencia || beneficiarioTransferencia) && incluyeTransferencia) {
         layout.addText('Datos para transferencia', { align: 'left', bold: true, after: 3 });
-        layout.addText(datosTransferencia, { align: 'left', bold: true, size: baseFont - 1 });
+        if (beneficiarioTransferencia) layout.addText(`Beneficiario: ${beneficiarioTransferencia}`, { align: 'left', bold: true, size: baseFont - 1 });
+        if (datosTransferencia) layout.addText(datosTransferencia, { align: 'left', bold: true, size: baseFont - 1 });
     }
     layout.addDivider();
     layout.addText(negocio?.pie_pagina || '¡Gracias por su compra!', { align: 'center', bold: true });
